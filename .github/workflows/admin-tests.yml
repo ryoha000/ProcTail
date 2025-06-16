@@ -1,0 +1,286 @@
+name: Admin Tests (Self-Hosted)
+
+# 管理者権限が必要なテスト用のワークフロー
+# Self-hosted runner または特別な環境でのみ実行
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_category:
+        description: 'Test category to run'
+        required: true
+        default: 'admin'
+        type: choice
+        options:
+        - admin
+        - etw
+        - system
+        - all
+      configuration:
+        description: 'Build configuration'
+        required: true
+        default: 'Debug'
+        type: choice
+        options:
+        - Debug
+        - Release
+      verbose:
+        description: 'Verbose output'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  SOLUTION_FILE: 'ProcTail.sln'
+
+jobs:
+  admin-tests:
+    name: Administrator Privilege Tests
+    # 注意: このジョブはself-hosted runnerまたは管理者権限が必要
+    # GitHub-hosted runnerでは管理者権限が制限されているため実行不可
+    runs-on: self-hosted
+    # ラベルで管理者権限を持つrunnerを指定
+    # runs-on: [self-hosted, windows, admin]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Verify Administrator Privileges
+      shell: powershell
+      run: |
+        $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
+        $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
+        $isAdmin = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+        
+        if (-not $isAdmin) {
+          Write-Error "This workflow requires administrator privileges"
+          exit 1
+        }
+        
+        Write-Host "✅ Running with administrator privileges" -ForegroundColor Green
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Install Tools
+      shell: powershell
+      run: |
+        dotnet tool install -g dotnet-reportgenerator-globaltool
+        dotnet tool install -g dotnet-coverage
+        
+    - name: Restore Dependencies
+      run: dotnet restore ${{ env.SOLUTION_FILE }}
+      
+    - name: Build Solution
+      run: |
+        dotnet build ${{ env.SOLUTION_FILE }} \
+          --configuration ${{ github.event.inputs.configuration }} \
+          --no-restore
+          
+    - name: Verify ETW Access
+      shell: powershell
+      run: |
+        try {
+          # ETWアクセステスト
+          $session = New-Object System.Diagnostics.Eventing.Reader.EventLogSession
+          Write-Host "✅ ETW access verified" -ForegroundColor Green
+        }
+        catch {
+          Write-Warning "⚠️ ETW access limited: $($_.Exception.Message)"
+        }
+        
+    - name: Run Administrator Tests
+      shell: powershell
+      run: |
+        $category = "${{ github.event.inputs.test_category }}"
+        $config = "${{ github.event.inputs.configuration }}"
+        $verbose = [System.Convert]::ToBoolean("${{ github.event.inputs.verbose }}")
+        
+        Write-Host "Running tests with category: $category" -ForegroundColor Blue
+        
+        $testArgs = @(
+          "test"
+          "--configuration", $config
+          "--no-build"
+          "--logger", "trx;LogFileName=admin-tests.trx"
+          "--results-directory", "./TestResults"
+          "--collect:XPlat Code Coverage"
+        )
+        
+        # カテゴリ別フィルタ設定
+        switch ($category) {
+          "admin" {
+            $testArgs += "--filter", "Category=RequiresAdmin"
+          }
+          "etw" {
+            $testArgs += "--filter", "Category=RequiresAdmin&FullyQualifiedName~Etw"
+          }
+          "system" {
+            $testArgs += "--filter", "Category=RequiresAdmin|Category=EndToEnd"
+          }
+          "all" {
+            $testArgs += "--filter", "Category=RequiresAdmin|Category=EndToEnd|Category=RequiresWindows"
+          }
+        }
+        
+        if ($verbose) {
+          $testArgs += "--verbosity", "detailed"
+        }
+        
+        Write-Host "Executing: dotnet $($testArgs -join ' ')" -ForegroundColor Cyan
+        
+        & dotnet @testArgs
+        
+        if ($LASTEXITCODE -ne 0) {
+          Write-Error "Tests failed with exit code: $LASTEXITCODE"
+          exit $LASTEXITCODE
+        }
+        
+        Write-Host "✅ All admin tests passed!" -ForegroundColor Green
+        
+    - name: Generate Coverage Report
+      shell: powershell
+      if: always()
+      run: |
+        $coverageFiles = Get-ChildItem -Path "./TestResults" -Filter "coverage.cobertura.xml" -Recurse
+        
+        if ($coverageFiles.Count -gt 0) {
+          Write-Host "Generating coverage report..." -ForegroundColor Blue
+          
+          reportgenerator `
+            -reports:"./TestResults/**/coverage.cobertura.xml" `
+            -targetdir:"./TestResults/AdminCoverageReport" `
+            -reporttypes:"Html;Cobertura;Badges" `
+            -verbosity:Info
+            
+          Write-Host "✅ Coverage report generated" -ForegroundColor Green
+        } else {
+          Write-Warning "No coverage files found"
+        }
+        
+    - name: Collect System Information
+      shell: powershell
+      if: always()
+      run: |
+        $systemInfo = @{
+          "OS" = (Get-WmiObject -Class Win32_OperatingSystem).Caption
+          "Version" = (Get-WmiObject -Class Win32_OperatingSystem).Version
+          "Architecture" = $env:PROCESSOR_ARCHITECTURE
+          "DotNetVersion" = (dotnet --version)
+          "PowerShellVersion" = $PSVersionTable.PSVersion.ToString()
+          "IsAdmin" = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+          "Timestamp" = (Get-Date).ToString("yyyy-MM-dd HH:mm:ss")
+        }
+        
+        $systemInfo | ConvertTo-Json | Out-File "./TestResults/system-info.json"
+        
+        Write-Host "System Information:" -ForegroundColor Blue
+        $systemInfo | Format-Table -AutoSize
+        
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: admin-test-results-${{ github.event.inputs.test_category }}-${{ github.event.inputs.configuration }}
+        path: |
+          ./TestResults/**/*.trx
+          ./TestResults/**/coverage.cobertura.xml
+          ./TestResults/AdminCoverageReport/**
+          ./TestResults/system-info.json
+          
+    - name: Upload Coverage to Codecov
+      uses: codecov/codecov-action@v3
+      if: always()
+      with:
+        files: ./TestResults/AdminCoverageReport/Cobertura.xml
+        flags: admin-tests
+        name: admin-coverage
+        
+    - name: Test Summary
+      shell: powershell
+      if: always()
+      run: |
+        Write-Host "`n=== Test Execution Summary ===" -ForegroundColor Yellow
+        Write-Host "Category: ${{ github.event.inputs.test_category }}" -ForegroundColor White
+        Write-Host "Configuration: ${{ github.event.inputs.configuration }}" -ForegroundColor White
+        Write-Host "Verbose: ${{ github.event.inputs.verbose }}" -ForegroundColor White
+        
+        # TRXファイル解析（簡易版）
+        $trxFiles = Get-ChildItem -Path "./TestResults" -Filter "*.trx" -Recurse
+        
+        if ($trxFiles.Count -gt 0) {
+          Write-Host "`nTest Result Files:" -ForegroundColor Blue
+          foreach ($file in $trxFiles) {
+            $size = [math]::Round($file.Length / 1KB, 2)
+            Write-Host "  - $($file.Name) (${size} KB)" -ForegroundColor White
+          }
+        }
+        
+        # カバレッジファイル確認
+        $coverageFiles = Get-ChildItem -Path "./TestResults" -Filter "*.xml" -Recurse | Where-Object { $_.Name -like "*coverage*" }
+        
+        if ($coverageFiles.Count -gt 0) {
+          Write-Host "`nCoverage Files:" -ForegroundColor Blue
+          foreach ($file in $coverageFiles) {
+            Write-Host "  - $($file.Name)" -ForegroundColor White
+          }
+        }
+        
+        Write-Host "`n=== End Summary ===" -ForegroundColor Yellow
+
+  # 管理者テスト結果の通知
+  notify-admin-results:
+    name: Notify Admin Test Results
+    runs-on: ubuntu-latest
+    needs: admin-tests
+    if: always()
+    
+    steps:
+    - name: Download Test Results
+      uses: actions/download-artifact@v4
+      with:
+        pattern: admin-test-results-*
+        path: ./admin-results/
+        merge-multiple: true
+        
+    - name: Generate Notification
+      run: |
+        category="${{ github.event.inputs.test_category }}"
+        config="${{ github.event.inputs.configuration }}"
+        
+        echo "# 管理者権限テスト結果 📋" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**実行設定:**" >> $GITHUB_STEP_SUMMARY
+        echo "- カテゴリ: \`$category\`" >> $GITHUB_STEP_SUMMARY  
+        echo "- 設定: \`$config\`" >> $GITHUB_STEP_SUMMARY
+        echo "- 実行時刻: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.admin-tests.result }}" == "success" ]]; then
+          echo "**結果: ✅ 成功**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "すべての管理者権限テストが正常に完了しました。" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "**結果: ❌ 失敗**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "管理者権限テストで問題が発生しました。ログを確認してください。" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**成果物:**" >> $GITHUB_STEP_SUMMARY
+        
+        # 結果ファイル一覧
+        result_files=$(find ./admin-results -type f | wc -l)
+        echo "- テスト結果ファイル数: $result_files" >> $GITHUB_STEP_SUMMARY
+        
+        # TRXファイル数
+        trx_files=$(find ./admin-results -name "*.trx" | wc -l)
+        echo "- TRXレポート数: $trx_files" >> $GITHUB_STEP_SUMMARY
+        
+        # カバレッジファイル確認
+        coverage_files=$(find ./admin-results -name "*coverage*" -type f | wc -l)
+        echo "- カバレッジファイル数: $coverage_files" >> $GITHUB_STEP_SUMMARY

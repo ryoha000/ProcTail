@@ -1,0 +1,87 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.Core", "src\ProcTail.Core\ProcTail.Core.csproj", "{2C8E4B6A-1234-4567-89AB-CDEF01234567}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.Infrastructure", "src\ProcTail.Infrastructure\ProcTail.Infrastructure.csproj", "{2C8E4B6A-1234-4567-89AB-CDEF01234568}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.Application", "src\ProcTail.Application\ProcTail.Application.csproj", "{2C8E4B6A-1234-4567-89AB-CDEF01234569}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.Host", "src\ProcTail.Host\ProcTail.Host.csproj", "{2C8E4B6A-1234-4567-89AB-CDEF0123456A}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.Testing.Common", "src\ProcTail.Testing.Common\ProcTail.Testing.Common.csproj", "{2C8E4B6A-1234-4567-89AB-CDEF0123456B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{3C8E4B6A-1234-4567-89AB-CDEF01234567}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{3C8E4B6A-1234-4567-89AB-CDEF01234568}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.Core.Tests", "tests\ProcTail.Core.Tests\ProcTail.Core.Tests.csproj", "{4C8E4B6A-1234-4567-89AB-CDEF01234567}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.Application.Tests", "tests\ProcTail.Application.Tests\ProcTail.Application.Tests.csproj", "{4C8E4B6A-1234-4567-89AB-CDEF01234568}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.Integration.Tests", "tests\ProcTail.Integration.Tests\ProcTail.Integration.Tests.csproj", "{4C8E4B6A-1234-4567-89AB-CDEF01234569}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ProcTail.System.Tests", "tests\ProcTail.System.Tests\ProcTail.System.Tests.csproj", "{4C8E4B6A-1234-4567-89AB-CDEF0123456A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2C8E4B6A-1234-4567-89AB-CDEF01234567}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234567}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234567}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234567}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234568}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234568}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234568}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234568}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234569}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234569}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234569}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF01234569}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234567}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234567}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234567}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234567}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234568}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234568}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234568}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234568}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234569}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234569}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234569}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF01234569}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF0123456A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF0123456A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF0123456A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4C8E4B6A-1234-4567-89AB-CDEF0123456A}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{2C8E4B6A-1234-4567-89AB-CDEF01234567} = {3C8E4B6A-1234-4567-89AB-CDEF01234567}
+		{2C8E4B6A-1234-4567-89AB-CDEF01234568} = {3C8E4B6A-1234-4567-89AB-CDEF01234567}
+		{2C8E4B6A-1234-4567-89AB-CDEF01234569} = {3C8E4B6A-1234-4567-89AB-CDEF01234567}
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456A} = {3C8E4B6A-1234-4567-89AB-CDEF01234567}
+		{2C8E4B6A-1234-4567-89AB-CDEF0123456B} = {3C8E4B6A-1234-4567-89AB-CDEF01234567}
+		{4C8E4B6A-1234-4567-89AB-CDEF01234567} = {3C8E4B6A-1234-4567-89AB-CDEF01234568}
+		{4C8E4B6A-1234-4567-89AB-CDEF01234568} = {3C8E4B6A-1234-4567-89AB-CDEF01234568}
+		{4C8E4B6A-1234-4567-89AB-CDEF01234569} = {3C8E4B6A-1234-4567-89AB-CDEF01234568}
+		{4C8E4B6A-1234-4567-89AB-CDEF0123456A} = {3C8E4B6A-1234-4567-89AB-CDEF01234568}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {1C8E4B6A-1234-4567-89AB-CDEF01234567}
+	EndGlobalSection
+EndGlobal
