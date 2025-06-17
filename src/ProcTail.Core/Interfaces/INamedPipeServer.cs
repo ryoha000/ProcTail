@@ -18,6 +18,11 @@ public interface INamedPipeServer : IDisposable
     bool IsRunning { get; }
 
     /// <summary>
+    /// パイプ名
+    /// </summary>
+    string PipeName { get; }
+
+    /// <summary>
     /// Named Pipeサーバーを開始
     /// </summary>
     /// <param name="cancellationToken">キャンセレーショントークン</param>

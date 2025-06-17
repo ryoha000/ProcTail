@@ -22,6 +22,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
     private readonly IEtwConfiguration _configuration;
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly List<TraceEventSession> _sessions = new();
+    private readonly List<Task> _sessionTasks = new();
     private readonly ConcurrentQueue<RawEventData> _eventQueue = new();
     private bool _isMonitoring;
     private bool _disposed;
@@ -75,8 +76,12 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             // 管理者権限チェック
             if (!IsRunningAsAdministrator())
             {
-                throw new UnauthorizedAccessException("ETW監視には管理者権限が必要です");
+                var errorMsg = "ETW監視には管理者権限が必要です";
+                _logger.LogError(errorMsg);
+                throw new UnauthorizedAccessException(errorMsg);
             }
+            
+            _logger.LogInformation("管理者権限が確認されました");
 
             // ETWセッションを作成
             await CreateEtwSessionsAsync(cancellationToken);
@@ -116,6 +121,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             {
                 try
                 {
+                    session?.Stop();
                     session?.Dispose();
                 }
                 catch (Exception ex)
@@ -124,6 +130,20 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                 }
             }
             _sessions.Clear();
+
+            // セッション処理タスクの完了を待機
+            if (_sessionTasks.Count > 0)
+            {
+                try
+                {
+                    await Task.WhenAll(_sessionTasks).WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+                }
+                catch (TimeoutException)
+                {
+                    _logger.LogWarning("ETWセッションタスクの停止がタイムアウトしました");
+                }
+                _sessionTasks.Clear();
+            }
 
             // イベント処理タスクの完了を待機
             if (_eventProcessingTask != null)
@@ -153,24 +173,20 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
     /// </summary>
     private async Task CreateEtwSessionsAsync(CancellationToken cancellationToken)
     {
-        var enabledProviders = _configuration.EnabledProviders;
-        
-        foreach (var providerName in enabledProviders)
+        try
         {
-            try
+            // 単一のセッションで複数のカーネルプロバイダーを処理
+            var session = CreateKernelTraceSession();
+            if (session != null)
             {
-                var session = CreateTraceSession(providerName);
-                if (session != null)
-                {
-                    _sessions.Add(session);
-                    _logger.LogInformation("ETWプロバイダーセッションを作成しました: {ProviderName}", providerName);
-                }
+                _sessions.Add(session);
+                _logger.LogInformation("統合ETWセッションを作成しました");
             }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "ETWプロバイダーセッション作成に失敗しました: {ProviderName}", providerName);
-                throw;
-            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ETWセッション作成に失敗しました");
+            throw;
         }
 
         if (_sessions.Count == 0)
@@ -182,21 +198,131 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
     }
 
     /// <summary>
+    /// 統合カーネルETWセッションを作成
+    /// </summary>
+    private TraceEventSession? CreateKernelTraceSession()
+    {
+        var sessionName = $"ProcTail_{Environment.ProcessId}_{Guid.NewGuid().ToString("N")[..8]}";
+        
+        try
+        {
+            _logger.LogTrace("統合ETWセッションを作成中: {SessionName}", sessionName);
+            
+            // まず既存のセッションをクリーンアップ
+            try
+            {
+                CleanupExistingEtwSessions();
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogWarning(cleanupEx, "既存ETWセッションクリーンアップ中に警告が発生しました");
+            }
+            
+            var session = new TraceEventSession(sessionName);
+            
+            // より限定的なキーワードで開始（リソース消費を削減）
+            _logger.LogTrace("軽量カーネルプロバイダーを有効化中...");
+            session.EnableKernelProvider(
+                KernelTraceEventParser.Keywords.Process);  // まずProcessのみ
+            
+            _logger.LogInformation("カーネルプロバイダーを有効にしました (Process)");
+            
+            // イベントハンドラーを設定
+            SetupKernelEventHandlers(session);
+            
+            // セッション処理タスクを開始
+            var sessionTask = Task.Run(() =>
+            {
+                try
+                {
+                    _logger.LogInformation("統合ETWセッション処理を開始します");
+                    session.Source.Process(); // ブロッキング呼び出し
+                    _logger.LogInformation("統合ETWセッション処理が終了しました");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "統合ETWセッション処理でエラーが発生しました");
+                }
+            }, _cancellationTokenSource.Token);
+            
+            _sessionTasks.Add(sessionTask);
+            
+            return session;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "統合TraceEventSession作成に失敗しました");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 既存のProcTail ETWセッションをクリーンアップ
+    /// </summary>
+    private void CleanupExistingEtwSessions()
+    {
+        try
+        {
+            _logger.LogDebug("既存のProcTail ETWセッションをクリーンアップ中...");
+            
+            // Process.Startを使ってlogman経由でセッションを停止
+            var cleanupCommands = new[]
+            {
+                "logman stop \"ProcTail*\" -ets",
+                "logman stop \"PT_*\" -ets"
+            };
+            
+            foreach (var command in cleanupCommands)
+            {
+                try
+                {
+                    using var process = new System.Diagnostics.Process();
+                    process.StartInfo.FileName = "cmd.exe";
+                    process.StartInfo.Arguments = $"/c {command} 2>nul";
+                    process.StartInfo.UseShellExecute = false;
+                    process.StartInfo.CreateNoWindow = true;
+                    process.Start();
+                    process.WaitForExit(2000); // 2秒でタイムアウト
+                }
+                catch
+                {
+                    // クリーンアップのエラーは無視
+                }
+            }
+            
+            // 少し待機してからセッション作成
+            Thread.Sleep(1000);
+            
+            _logger.LogDebug("ETWセッションクリーンアップが完了しました");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "ETWセッションクリーンアップ中にエラーが発生しました");
+        }
+    }
+
+    /// <summary>
     /// TraceEventSessionを作成
     /// </summary>
     private TraceEventSession? CreateTraceSession(string providerName)
     {
-        var sessionName = $"ProcTail_{providerName}_{Guid.NewGuid():N}"[0..32];
+        var sessionName = $"PT_{providerName.Split('-').Last()}_{Environment.ProcessId}";
         
         try
         {
+            _logger.LogTrace("ETWセッションを作成中: {SessionName} (Provider: {Provider})", sessionName, providerName);
             var session = new TraceEventSession(sessionName);
             
             // プロバイダー固有の設定
             switch (providerName)
             {
                 case "Microsoft-Windows-Kernel-FileIO":
-                    session.EnableKernelProvider(KernelTraceEventParser.Keywords.FileIOInit);
+                    // FileIOInitだけでなく、実際のFileIO操作イベントも有効にする
+                    _logger.LogTrace("FileIOキーワードを有効化中...");
+                    session.EnableKernelProvider(
+                        KernelTraceEventParser.Keywords.FileIOInit | 
+                        KernelTraceEventParser.Keywords.FileIO);
+                    _logger.LogInformation("FileIOプロバイダーを有効にしました (Keywords: FileIOInit | FileIO)");
                     break;
                     
                 case "Microsoft-Windows-Kernel-Process":
@@ -219,6 +345,23 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             // イベントハンドラーを設定
             SetupEventHandlers(session, providerName);
             
+            // 各セッションを別スレッドで処理開始
+            var sessionTask = Task.Run(() =>
+            {
+                try
+                {
+                    _logger.LogInformation("ETWセッション処理を開始します: {ProviderName}", providerName);
+                    session.Source.Process(); // ブロッキング呼び出し
+                    _logger.LogInformation("ETWセッション処理が終了しました: {ProviderName}", providerName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "ETWセッション処理でエラーが発生しました: {ProviderName}", providerName);
+                }
+            }, _cancellationTokenSource.Token);
+            
+            _sessionTasks.Add(sessionTask);
+            
             return session;
         }
         catch (Exception ex)
@@ -226,6 +369,31 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _logger.LogError(ex, "TraceEventSession作成に失敗しました: {ProviderName}", providerName);
             return null;
         }
+    }
+
+    /// <summary>
+    /// 統合カーネルイベントハンドラーを設定
+    /// </summary>
+    private void SetupKernelEventHandlers(TraceEventSession session)
+    {
+        // ファイルI/Oイベント
+        session.Source.Kernel.FileIOCreate += OnFileIOEvent;
+        session.Source.Kernel.FileIOWrite += OnFileIOEvent;
+        session.Source.Kernel.FileIORead += OnFileIOEvent;
+        session.Source.Kernel.FileIODelete += OnFileIOEvent;
+        session.Source.Kernel.FileIORename += OnFileIOEvent;
+        session.Source.Kernel.FileIOSetInfo += OnFileIOEvent;
+        session.Source.Kernel.FileIOClose += OnFileIOEvent;
+        _logger.LogDebug("FileIOイベントハンドラーを設定しました (Create, Write, Read, Delete, Rename, SetInfo, Close)");
+        
+        // プロセスイベント
+        session.Source.Kernel.ProcessStart += OnProcessEvent;
+        session.Source.Kernel.ProcessStop += OnProcessEvent;
+        _logger.LogDebug("プロセスイベントハンドラーを設定しました (Start, Stop)");
+        
+        // 汎用イベントハンドラー
+        session.Source.UnhandledEvents += OnUnhandledEvent;
+        _logger.LogDebug("未処理イベントハンドラーを設定しました");
     }
 
     /// <summary>
@@ -239,6 +407,11 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             session.Source.Kernel.FileIOCreate += OnFileIOEvent;
             session.Source.Kernel.FileIOWrite += OnFileIOEvent;
             session.Source.Kernel.FileIORead += OnFileIOEvent;
+            session.Source.Kernel.FileIODelete += OnFileIOEvent;
+            session.Source.Kernel.FileIORename += OnFileIOEvent;
+            session.Source.Kernel.FileIOSetInfo += OnFileIOEvent;
+            session.Source.Kernel.FileIOClose += OnFileIOEvent;
+            _logger.LogDebug("FileIOイベントハンドラーを設定しました (Create, Write, Read, Delete, Rename, SetInfo, Close)");
         }
         
         // プロセスイベント
@@ -263,7 +436,11 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         try
         {
             var eventName = data.EventName;
+            var processId = data.ProcessID;
             var payload = new Dictionary<string, object>();
+            
+            _logger.LogTrace("RAW FileIOイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}", 
+                eventName, processId, data.ProviderName);
             
             // TraceEventからペイロード情報を取得
             for (int i = 0; i < data.PayloadNames.Length; i++)
@@ -273,11 +450,17 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                 payload[name] = value ?? string.Empty;
             }
 
+            // ファイルパス情報を取得
+            var fileName = payload.ContainsKey("FileName") ? payload["FileName"].ToString() : "Unknown";
+            
+            _logger.LogTrace("FileIOイベントを受信: {EventName}, ProcessId: {ProcessId}, FileName: {FileName}", 
+                eventName, processId, fileName);
+
             var rawEvent = new RawEventData(
                 data.TimeStamp,
                 "Microsoft-Windows-Kernel-FileIO",
-                eventName,
-                data.ProcessID,
+                $"FileIO/{eventName}",
+                processId,
                 data.ThreadID,
                 data.ActivityID,
                 data.RelatedActivityID,
@@ -285,6 +468,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             );
 
             _eventQueue.Enqueue(rawEvent);
+            _logger.LogTrace("FileIOイベントをキューに追加しました: ProcessId: {ProcessId}", processId);
         }
         catch (Exception ex)
         {
@@ -351,9 +535,15 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
 
         try
         {
+            _logger.LogTrace("未処理イベントを受信: {ProviderName}.{EventName}, ProcessId: {ProcessId}", 
+                data.ProviderName, data.EventName, data.ProcessID);
+
             // 設定で有効になっているイベントのみ処理
             if (!_configuration.EnabledEventNames.Contains(data.EventName))
+            {
+                _logger.LogTrace("イベントはフィルタリングされました: {EventName} (有効なイベント一覧にない)", data.EventName);
                 return;
+            }
 
             var payload = new Dictionary<string, object>();
             
@@ -416,18 +606,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                     }
                 }
 
-                // ETWセッションからのイベント処理
-                foreach (var session in _sessions.ToList())
-                {
-                    try
-                    {
-                        session.Source.Process();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "ETWセッション処理中にエラーが発生しました");
-                    }
-                }
+                // イベントキューの処理のみ行う（セッション処理は別スレッドで実行中）
 
                 await Task.Delay(10, _cancellationTokenSource.Token);
             }

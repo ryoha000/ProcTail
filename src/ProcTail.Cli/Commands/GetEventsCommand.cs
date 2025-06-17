@@ -47,33 +47,40 @@ public class GetEventsCommand : BaseCommand
 
         try
         {
-            var response = await _pipeClient.GetRecordedEventsAsync(tagName, count, context.GetCancellationToken());
-
-            if (response.Success)
+            if (follow)
             {
-                if (response.Events.Count == 0)
-                {
-                    WriteInfo($"タグ '{tagName}' のイベントは見つかりませんでした。");
-                    return;
-                }
-
-                switch (format.ToLowerInvariant())
-                {
-                    case "json":
-                        Console.WriteLine(JsonSerializer.Serialize(response.Events, new JsonSerializerOptions { WriteIndented = true }));
-                        break;
-                    case "csv":
-                        WriteEventsCsv(response.Events);
-                        break;
-                    default:
-                        WriteEventsTable(response.Events);
-                        break;
-                }
+                await FollowEventsAsync(tagName, format, context.GetCancellationToken());
             }
             else
             {
-                WriteError($"イベント取得に失敗しました: {response.ErrorMessage}");
-                context.ExitCode = 1;
+                var response = await _pipeClient.GetRecordedEventsAsync(tagName, count, context.GetCancellationToken());
+
+                if (response.Success)
+                {
+                    if (response.Events.Count == 0)
+                    {
+                        WriteInfo($"タグ '{tagName}' のイベントは見つかりませんでした。");
+                        return;
+                    }
+
+                    switch (format.ToLowerInvariant())
+                    {
+                        case "json":
+                            Console.WriteLine(JsonSerializer.Serialize(response.Events, new JsonSerializerOptions { WriteIndented = true }));
+                            break;
+                        case "csv":
+                            WriteEventsCsv(response.Events);
+                            break;
+                        default:
+                            WriteEventsTable(response.Events);
+                            break;
+                    }
+                }
+                else
+                {
+                    WriteError($"イベント取得に失敗しました: {response.ErrorMessage}");
+                    context.ExitCode = 1;
+                }
             }
         }
         catch (Exception ex)
@@ -104,6 +111,71 @@ public class GetEventsCommand : BaseCommand
         {
             Console.WriteLine($"{e.Timestamp:yyyy-MM-dd HH:mm:ss},{e.ProcessId},{e.GetType().Name},\"{GetEventDetails(e)}\"");
         }
+    }
+
+    /// <summary>
+    /// イベントをリアルタイムで監視
+    /// </summary>
+    /// <param name="tagName">タグ名</param>
+    /// <param name="format">出力フォーマット</param>
+    /// <param name="cancellationToken">キャンセレーショントークン</param>
+    private async Task FollowEventsAsync(string tagName, string format, CancellationToken cancellationToken)
+    {
+        WriteInfo($"タグ '{tagName}' のイベントを監視中... (Ctrl+C で停止)");
+        
+        var lastEventCount = 0;
+        var pollInterval = TimeSpan.FromSeconds(1);
+
+        // CSV形式の場合、最初にヘッダーを出力
+        if (format.ToLowerInvariant() == "csv")
+        {
+            Console.WriteLine("Timestamp,ProcessId,EventType,Details");
+        }
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                var response = await _pipeClient.GetRecordedEventsAsync(tagName, 1000, cancellationToken);
+                
+                if (response.Success && response.Events.Count > lastEventCount)
+                {
+                    // 新しいイベントのみを表示
+                    var newEvents = response.Events.Skip(lastEventCount).ToList();
+                    
+                    foreach (var eventData in newEvents)
+                    {
+                        switch (format.ToLowerInvariant())
+                        {
+                            case "json":
+                                Console.WriteLine(JsonSerializer.Serialize(eventData, new JsonSerializerOptions { WriteIndented = false }));
+                                break;
+                            case "csv":
+                                Console.WriteLine($"{eventData.Timestamp:yyyy-MM-dd HH:mm:ss},{eventData.ProcessId},{eventData.GetType().Name},\"{GetEventDetails(eventData)}\"");
+                                break;
+                            default:
+                                Console.WriteLine($"[{eventData.Timestamp:HH:mm:ss}] PID:{eventData.ProcessId} {eventData.GetType().Name}: {GetEventDetails(eventData)}");
+                                break;
+                        }
+                    }
+                    
+                    lastEventCount = response.Events.Count;
+                }
+                
+                await Task.Delay(pollInterval, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                WriteError($"イベント監視中にエラーが発生しました: {ex.Message}");
+                await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+            }
+        }
+        
+        WriteInfo("イベント監視を停止しました。");
     }
 
     private static string GetEventDetails(Core.Models.BaseEventData eventData)

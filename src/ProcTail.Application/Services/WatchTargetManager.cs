@@ -263,6 +263,82 @@ public class WatchTargetManager : IWatchTargetManager, IDisposable
     }
 
     /// <summary>
+    /// 全ての監視対象の詳細情報を取得
+    /// </summary>
+    /// <returns>監視対象詳細情報のリスト</returns>
+    public Task<List<WatchTargetInfo>> GetWatchTargetInfosAsync()
+    {
+        try
+        {
+            var watchTargetInfos = new List<WatchTargetInfo>();
+
+            foreach (var watchTarget in _watchTargets.Values)
+            {
+                try
+                {
+                    using var process = System.Diagnostics.Process.GetProcessById(watchTarget.ProcessId);
+                    var processName = process.ProcessName;
+                    var executablePath = GetProcessExecutablePath(process);
+
+                    watchTargetInfos.Add(new WatchTargetInfo(
+                        watchTarget.ProcessId,
+                        processName,
+                        executablePath,
+                        watchTarget.RegisteredAt,
+                        watchTarget.TagName
+                    ));
+                }
+                catch (ArgumentException)
+                {
+                    // プロセスが既に終了している場合
+                    watchTargetInfos.Add(new WatchTargetInfo(
+                        watchTarget.ProcessId,
+                        "[Terminated]",
+                        "[Unknown]",
+                        watchTarget.RegisteredAt,
+                        watchTarget.TagName
+                    ));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "プロセス情報取得に失敗しました (ProcessId: {ProcessId})", watchTarget.ProcessId);
+                    watchTargetInfos.Add(new WatchTargetInfo(
+                        watchTarget.ProcessId,
+                        "[Error]",
+                        "[Unknown]",
+                        watchTarget.RegisteredAt,
+                        watchTarget.TagName
+                    ));
+                }
+            }
+
+            return Task.FromResult(watchTargetInfos);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "監視対象詳細情報取得中にエラーが発生しました");
+            return Task.FromResult(new List<WatchTargetInfo>());
+        }
+    }
+
+    /// <summary>
+    /// プロセスの実行ファイルパスを取得
+    /// </summary>
+    /// <param name="process">プロセス</param>
+    /// <returns>実行ファイルパス</returns>
+    private static string GetProcessExecutablePath(System.Diagnostics.Process process)
+    {
+        try
+        {
+            return process.MainModule?.FileName ?? "[Unknown]";
+        }
+        catch
+        {
+            return "[Access Denied]";
+        }
+    }
+
+    /// <summary>
     /// リソースの解放
     /// </summary>
     public void Dispose()

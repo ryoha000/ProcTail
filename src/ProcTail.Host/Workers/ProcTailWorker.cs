@@ -34,17 +34,24 @@ public class ProcTailWorker : BackgroundService
     {
         try
         {
-            _logger.LogInformation("ProcTailワーカーサービスを開始しています...");
+            _logger.LogInformation("=== ProcTailワーカーサービスを開始しています ===");
+            _logger.LogInformation("Options: ServiceName={ServiceName}, DataDirectory={DataDirectory}, EnableMetrics={EnableMetrics}", 
+                _options.ServiceName, _options.DataDirectory, _options.EnableMetrics);
             
             // データディレクトリを作成
+            _logger.LogInformation("データディレクトリを確保中...");
             EnsureDataDirectory();
+            _logger.LogInformation("データディレクトリの確保が完了しました");
             
             // ProcTailサービスを開始
+            _logger.LogInformation("ProcTailサービスを開始中...");
             await _procTailService.StartAsync(cancellationToken);
+            _logger.LogInformation("ProcTailサービスの開始が完了しました");
             
-            _logger.LogInformation("ProcTailワーカーサービスが正常に開始されました");
-            
+            _logger.LogInformation("ベースワーカーサービスを開始中...");
             await base.StartAsync(cancellationToken);
+            
+            _logger.LogInformation("=== ProcTailワーカーサービスが正常に開始されました ===");
         }
         catch (Exception ex)
         {

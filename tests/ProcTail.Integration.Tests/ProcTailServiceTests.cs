@@ -132,6 +132,114 @@ public class ProcTailServiceTests
     }
 
     [Test]
+    public async Task RemoveWatchTarget_ShouldRemoveTargets()
+    {
+        // Arrange
+        const string tagName = "remove-test";
+        const int processId1 = 1111;
+        const int processId2 = 2222;
+        
+        await _procTailService.StartAsync();
+        
+        // 監視対象を2つ追加
+        await _procTailService.AddWatchTargetAsync(processId1, tagName);
+        await _procTailService.AddWatchTargetAsync(processId2, tagName);
+
+        // Act - タグで削除
+        var watchTargetManager = _serviceProvider.GetRequiredService<IWatchTargetManager>();
+        var removedCount = await watchTargetManager.RemoveWatchTargetsByTagAsync(tagName);
+
+        // Assert
+        removedCount.Should().Be(2);
+        watchTargetManager.IsWatchedProcess(processId1).Should().BeFalse();
+        watchTargetManager.IsWatchedProcess(processId2).Should().BeFalse();
+
+        await _procTailService.StopAsync();
+    }
+
+    [Test]
+    public async Task GetWatchTargets_ShouldReturnDetailedInfo()
+    {
+        // Arrange
+        const string tagName = "watch-list-test";
+        const int processId = 3333;
+        
+        await _procTailService.StartAsync();
+        await _procTailService.AddWatchTargetAsync(processId, tagName);
+
+        // Act
+        var watchTargetManager = _serviceProvider.GetRequiredService<IWatchTargetManager>();
+        var watchTargets = await watchTargetManager.GetWatchTargetInfosAsync();
+
+        // Assert
+        watchTargets.Should().HaveCount(1);
+        var target = watchTargets[0];
+        target.ProcessId.Should().Be(processId);
+        target.TagName.Should().Be(tagName);
+        target.ProcessName.Should().NotBeEmpty();
+        target.ExecutablePath.Should().NotBeEmpty();
+        target.StartTime.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromMinutes(1));
+
+        await _procTailService.StopAsync();
+    }
+
+    [Test]
+    public async Task IpcIntegration_RemoveWatchTargetRequest_ShouldWork()
+    {
+        // Arrange
+        await _procTailService.StartAsync();
+        
+        // 監視対象を追加
+        await _procTailService.AddWatchTargetAsync(4444, "remove-ipc-test");
+
+        var request = new
+        {
+            RequestType = "RemoveWatchTarget",
+            TagName = "remove-ipc-test"
+        };
+
+        // Act
+        var response = await _mockPipeServer.TriggerRequestReceivedAsync(
+            System.Text.Json.JsonSerializer.Serialize(request));
+
+        // Assert
+        response.Should().NotBeNullOrEmpty();
+        var removeResponse = System.Text.Json.JsonSerializer.Deserialize<RemoveWatchTargetResponse>(response);
+        removeResponse!.Success.Should().BeTrue();
+
+        await _procTailService.StopAsync();
+    }
+
+    [Test]
+    public async Task IpcIntegration_GetWatchTargetsRequest_ShouldWork()
+    {
+        // Arrange
+        await _procTailService.StartAsync();
+        
+        // 監視対象を追加
+        await _procTailService.AddWatchTargetAsync(5555, "get-ipc-test");
+
+        var request = new
+        {
+            RequestType = "GetWatchTargets"
+        };
+
+        // Act
+        var response = await _mockPipeServer.TriggerRequestReceivedAsync(
+            System.Text.Json.JsonSerializer.Serialize(request));
+
+        // Assert
+        response.Should().NotBeNullOrEmpty();
+        var getResponse = System.Text.Json.JsonSerializer.Deserialize<GetWatchTargetsResponse>(response);
+        getResponse!.Success.Should().BeTrue();
+        getResponse.WatchTargets.Should().HaveCount(1);
+        getResponse.WatchTargets[0].ProcessId.Should().Be(5555);
+        getResponse.WatchTargets[0].TagName.Should().Be("get-ipc-test");
+
+        await _procTailService.StopAsync();
+    }
+
+    [Test]
     public async Task IpcIntegration_AddWatchTargetRequest_ShouldWork()
     {
         // Arrange

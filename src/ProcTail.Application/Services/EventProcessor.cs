@@ -47,6 +47,9 @@ public class EventProcessor : IEventProcessor
 
         try
         {
+            _logger.LogTrace("生ETWイベントを受信: {Provider}.{Event}, ProcessId: {ProcessId}", 
+                rawEvent.ProviderName, rawEvent.EventName, rawEvent.ProcessId);
+
             // イベントをフィルタリング
             if (!ShouldProcessEvent(rawEvent))
             {

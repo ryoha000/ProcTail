@@ -17,6 +17,16 @@ public interface IProcTailPipeClient : IDisposable
     Task<AddWatchTargetResponse> AddWatchTargetAsync(int processId, string tagName, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 監視対象を削除
+    /// </summary>
+    Task<RemoveWatchTargetResponse> RemoveWatchTargetAsync(string tagName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 監視対象一覧を取得
+    /// </summary>
+    Task<GetWatchTargetsResponse> GetWatchTargetsAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 記録されたイベントを取得
     /// </summary>
     Task<GetRecordedEventsResponse> GetRecordedEventsAsync(string tagName, int maxCount = 100, CancellationToken cancellationToken = default);
@@ -76,6 +86,37 @@ public class ProcTailPipeClient : IProcTailPipeClient
 
         var responseJson = await SendRequestAsync(JsonSerializer.Serialize(request), cancellationToken);
         return JsonSerializer.Deserialize<AddWatchTargetResponse>(responseJson) 
+            ?? throw new InvalidOperationException("応答のデシリアライズに失敗しました");
+    }
+
+    /// <summary>
+    /// 監視対象を削除
+    /// </summary>
+    public async Task<RemoveWatchTargetResponse> RemoveWatchTargetAsync(string tagName, CancellationToken cancellationToken = default)
+    {
+        var request = new
+        {
+            RequestType = "RemoveWatchTarget",
+            TagName = tagName
+        };
+
+        var responseJson = await SendRequestAsync(JsonSerializer.Serialize(request), cancellationToken);
+        return JsonSerializer.Deserialize<RemoveWatchTargetResponse>(responseJson) 
+            ?? throw new InvalidOperationException("応答のデシリアライズに失敗しました");
+    }
+
+    /// <summary>
+    /// 監視対象一覧を取得
+    /// </summary>
+    public async Task<GetWatchTargetsResponse> GetWatchTargetsAsync(CancellationToken cancellationToken = default)
+    {
+        var request = new
+        {
+            RequestType = "GetWatchTargets"
+        };
+
+        var responseJson = await SendRequestAsync(JsonSerializer.Serialize(request), cancellationToken);
+        return JsonSerializer.Deserialize<GetWatchTargetsResponse>(responseJson) 
             ?? throw new InvalidOperationException("応答のデシリアライズに失敗しました");
     }
 
@@ -218,10 +259,13 @@ public class ProcTailPipeClient : IProcTailPipeClient
     /// <summary>
     /// メッセージを送信
     /// </summary>
-    private static async Task SendMessageAsync(NamedPipeClientStream pipeClient, string message, CancellationToken cancellationToken)
+    private async Task SendMessageAsync(NamedPipeClientStream pipeClient, string message, CancellationToken cancellationToken)
     {
         var messageBytes = Encoding.UTF8.GetBytes(message);
         var lengthBytes = BitConverter.GetBytes(messageBytes.Length);
+
+        _logger.LogDebug("メッセージを送信します - 長さ: {Length}, lengthBytesサイズ: {LengthBytesSize}", 
+            messageBytes.Length, lengthBytes.Length);
 
         // メッセージ長を送信
         await pipeClient.WriteAsync(lengthBytes, cancellationToken);
@@ -230,6 +274,8 @@ public class ProcTailPipeClient : IProcTailPipeClient
         await pipeClient.WriteAsync(messageBytes, cancellationToken);
         
         await pipeClient.FlushAsync(cancellationToken);
+        
+        _logger.LogDebug("メッセージ送信が完了しました");
     }
 
     /// <summary>

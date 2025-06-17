@@ -57,6 +57,12 @@ public interface IWatchTargetManager
     /// <param name="cancellationToken">キャンセレーショントークン</param>
     /// <returns>削除された監視対象数</returns>
     Task<int> RemoveWatchTargetsByTagAsync(string tagName, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 監視対象の詳細情報を取得
+    /// </summary>
+    /// <returns>監視対象詳細情報のリスト</returns>
+    Task<List<WatchTargetInfo>> GetWatchTargetInfosAsync();
 }
 
 /// <summary>

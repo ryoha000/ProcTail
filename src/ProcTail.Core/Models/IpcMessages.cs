@@ -1,6 +1,16 @@
 namespace ProcTail.Core.Models;
 
 /// <summary>
+/// 監視対象の詳細情報
+/// </summary>
+public record WatchTargetInfo(
+    int ProcessId,
+    string ProcessName,
+    string ExecutablePath,
+    DateTime StartTime,
+    string TagName);
+
+/// <summary>
 /// 全IPC応答の基底クラス
 /// </summary>
 public abstract record BaseResponse
@@ -26,6 +36,17 @@ public record AddWatchTargetRequest(int ProcessId, string TagName);
 /// 監視対象追加応答
 /// </summary>
 public record AddWatchTargetResponse : BaseResponse;
+
+// --- RemoveWatchTarget ---
+/// <summary>
+/// 監視対象削除要求
+/// </summary>
+public record RemoveWatchTargetRequest(string TagName);
+
+/// <summary>
+/// 監視対象削除応答
+/// </summary>
+public record RemoveWatchTargetResponse : BaseResponse;
 
 // --- GetRecordedEvents ---
 /// <summary>
@@ -54,6 +75,23 @@ public record ClearEventsRequest(string TagName);
 /// イベントクリア応答
 /// </summary>
 public record ClearEventsResponse : BaseResponse;
+
+// --- GetWatchTargets ---
+/// <summary>
+/// 監視対象一覧取得要求
+/// </summary>
+public record GetWatchTargetsRequest;
+
+/// <summary>
+/// 監視対象一覧取得応答
+/// </summary>
+public record GetWatchTargetsResponse(List<WatchTargetInfo> WatchTargets) : BaseResponse
+{
+    /// <summary>
+    /// デフォルトコンストラクタ（失敗時用）
+    /// </summary>
+    public GetWatchTargetsResponse() : this(new List<WatchTargetInfo>()) { }
+}
 
 // --- Shutdown ---
 /// <summary>

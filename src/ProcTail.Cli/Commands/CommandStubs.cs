@@ -12,16 +12,28 @@ public class RemoveWatchTargetCommand : BaseCommand
     public override async Task ExecuteAsync(InvocationContext context)
     {
         var tagName = "";
+        var skipConfirm = false;
         
         // オプション値を取得
         foreach (var option in context.ParseResult.CommandResult.Command.Options)
         {
             var value = context.ParseResult.GetValueForOption(option);
-            if (option.Name == "tag")
+            switch (option.Name)
             {
-                tagName = value as string ?? "";
-                break;
+                case "tag":
+                    tagName = value as string ?? "";
+                    break;
+                case "yes":
+                    skipConfirm = (bool?)value ?? false;
+                    break;
             }
+        }
+        
+        if (string.IsNullOrWhiteSpace(tagName))
+        {
+            WriteError("タグ名が指定されていません。--tag オプションでタグ名を指定してください。");
+            context.ExitCode = 1;
+            return;
         }
         
         if (!await TestServiceConnectionAsync())
@@ -30,8 +42,31 @@ public class RemoveWatchTargetCommand : BaseCommand
             return;
         }
 
-        WriteInfo($"監視対象削除機能 (タグ: {tagName}) - 実装予定");
-        await Task.Delay(1);
+        if (!skipConfirm && !PromptConfirmation($"タグ '{tagName}' の監視対象を削除しますか？"))
+        {
+            WriteInfo("操作をキャンセルしました。");
+            return;
+        }
+
+        try
+        {
+            var response = await _pipeClient.RemoveWatchTargetAsync(tagName, context.GetCancellationToken());
+
+            if (response.Success)
+            {
+                WriteSuccess($"タグ '{tagName}' の監視対象を削除しました。");
+            }
+            else
+            {
+                WriteError($"監視対象削除に失敗しました: {response.ErrorMessage}");
+                context.ExitCode = 1;
+            }
+        }
+        catch (Exception ex)
+        {
+            WriteError($"監視対象削除中にエラーが発生しました: {ex.Message}");
+            context.ExitCode = 1;
+        }
     }
 }
 
@@ -62,11 +97,33 @@ public class ListWatchTargetsCommand : BaseCommand
 
         try
         {
-            var response = await _pipeClient.GetStatusAsync(context.GetCancellationToken());
+            var response = await _pipeClient.GetWatchTargetsAsync(context.GetCancellationToken());
+            
             if (response.Success)
             {
-                WriteInfo($"アクティブな監視対象数: {response.ActiveWatchTargets}");
-                WriteInfo("詳細な監視対象一覧機能 - 実装予定");
+                if (response.WatchTargets.Count == 0)
+                {
+                    WriteInfo("監視対象はありません。");
+                    return;
+                }
+
+                switch (format.ToLowerInvariant())
+                {
+                    case "json":
+                        Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(response.WatchTargets, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+                        break;
+                    case "csv":
+                        OutputCsvFormat(response.WatchTargets);
+                        break;
+                    default: // table
+                        OutputTableFormat(response.WatchTargets);
+                        break;
+                }
+            }
+            else
+            {
+                WriteError($"監視対象一覧取得に失敗しました: {response.ErrorMessage}");
+                context.ExitCode = 1;
             }
         }
         catch (Exception ex)
@@ -74,6 +131,55 @@ public class ListWatchTargetsCommand : BaseCommand
             WriteError($"監視対象一覧取得中にエラーが発生しました: {ex.Message}");
             context.ExitCode = 1;
         }
+    }
+
+    private void OutputTableFormat(List<ProcTail.Core.Models.WatchTargetInfo> watchTargets)
+    {
+        const int pidWidth = 8;
+        const int tagWidth = 15;
+        const int nameWidth = 20;
+        const int startTimeWidth = 20;
+        const int pathWidth = 50;
+
+        // ヘッダー
+        Console.WriteLine($"{"PID".PadRight(pidWidth)} {"Tag".PadRight(tagWidth)} {"Process Name".PadRight(nameWidth)} {"Start Time".PadRight(startTimeWidth)} {"Executable Path".PadRight(pathWidth)}");
+        Console.WriteLine(new string('-', pidWidth + tagWidth + nameWidth + startTimeWidth + pathWidth + 4));
+
+        foreach (var target in watchTargets.OrderBy(t => t.TagName).ThenBy(t => t.ProcessId))
+        {
+            var pid = target.ProcessId.ToString().PadRight(pidWidth);
+            var tag = TruncateString(target.TagName, tagWidth);
+            var name = TruncateString(target.ProcessName, nameWidth);
+            var startTime = target.StartTime.ToLocalTime().ToString("yyyy-MM-dd HH:mm").PadRight(startTimeWidth);
+            var path = TruncateString(target.ExecutablePath, pathWidth);
+
+            Console.WriteLine($"{pid} {tag} {name} {startTime} {path}");
+        }
+    }
+
+    private void OutputCsvFormat(List<ProcTail.Core.Models.WatchTargetInfo> watchTargets)
+    {
+        Console.WriteLine("PID,Tag,ProcessName,StartTime,ExecutablePath");
+        foreach (var target in watchTargets.OrderBy(t => t.TagName).ThenBy(t => t.ProcessId))
+        {
+            Console.WriteLine($"{target.ProcessId},\"{EscapeCsv(target.TagName)}\",\"{EscapeCsv(target.ProcessName)}\",\"{target.StartTime:yyyy-MM-dd HH:mm:ss}\",\"{EscapeCsv(target.ExecutablePath)}\"");
+        }
+    }
+
+    private static string TruncateString(string value, int maxLength)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "".PadRight(maxLength);
+        
+        return value.Length > maxLength ? (value.Substring(0, maxLength - 3) + "...").PadRight(maxLength) : value.PadRight(maxLength);
+    }
+
+    private static string EscapeCsv(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+        
+        return value.Replace("\"", "\"\"");
     }
 }
 

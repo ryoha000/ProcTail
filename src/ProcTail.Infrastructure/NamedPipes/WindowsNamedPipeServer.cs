@@ -73,16 +73,21 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
 
         try
         {
-            _logger.LogInformation("Named Pipeサーバーを開始しています... (パイプ名: {PipeName})", _configuration.PipeName);
+            _logger.LogInformation("=== Named Pipeサーバーを開始しています ===");
+            _logger.LogInformation("Configuration: PipeName={PipeName}, MaxConnections={MaxConnections}, BufferSize={BufferSize}", 
+                _configuration.PipeName, _configuration.MaxConcurrentConnections, _configuration.BufferSize);
 
             // サーバータスクを開始
+            _logger.LogInformation("サーバータスクを開始中...");
             _serverTask = Task.Run(RunServerAsync, _cancellationTokenSource.Token);
+            _logger.LogInformation("サーバータスクが開始されました");
 
             // サーバーが開始されるまで少し待機
+            _logger.LogInformation("サーバー初期化を待機中...");
             await Task.Delay(100, cancellationToken);
 
             _isRunning = true;
-            _logger.LogInformation("Named Pipeサーバーが正常に開始されました");
+            _logger.LogInformation("=== Named Pipeサーバーが正常に開始されました ===");
         }
         catch (Exception ex)
         {
@@ -152,7 +157,7 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                 try
                 {
                     // Named Pipeサーバーを作成
-                    using var pipeServer = CreateNamedPipeServerStream();
+                    var pipeServer = CreateNamedPipeServerStream();
                     
                     _logger.LogDebug("クライアント接続を待機中...");
 
@@ -161,8 +166,18 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                     
                     _logger.LogDebug("クライアントが接続されました");
 
-                    // クライアント処理タスクを開始
-                    var clientTask = Task.Run(async () => await HandleClientAsync(pipeServer), _cancellationTokenSource.Token);
+                    // クライアント処理タスクを開始（タスク内でpipeServerを破棄）
+                    var clientTask = Task.Run(async () => 
+                    {
+                        try
+                        {
+                            await HandleClientAsync(pipeServer);
+                        }
+                        finally
+                        {
+                            pipeServer?.Dispose();
+                        }
+                    }, _cancellationTokenSource.Token);
                     
                     lock (_lock)
                     {
@@ -247,6 +262,7 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                 try
                 {
                     // メッセージを受信
+                    _logger.LogDebug("メッセージ受信を開始します (ClientId: {ClientId})", clientId);
                     var requestMessage = await ReceiveMessageAsync(pipeStream, _cancellationTokenSource.Token);
                     
                     if (string.IsNullOrEmpty(requestMessage))
@@ -313,40 +329,56 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
     /// <summary>
     /// メッセージを受信
     /// </summary>
-    private static async Task<string> ReceiveMessageAsync(NamedPipeServerStream pipeStream, CancellationToken cancellationToken)
+    private async Task<string> ReceiveMessageAsync(NamedPipeServerStream pipeStream, CancellationToken cancellationToken)
     {
-        // メッセージ長を受信
-        var lengthBuffer = new byte[4];
-        var bytesRead = 0;
-        
-        while (bytesRead < 4)
+        try
         {
-            var read = await pipeStream.ReadAsync(lengthBuffer.AsMemory(bytesRead, 4 - bytesRead), cancellationToken);
-            if (read == 0)
-                return string.Empty;
-            bytesRead += read;
-        }
+            // メッセージ長を受信
+            var lengthBuffer = new byte[4];
+            var bytesRead = 0;
+            
+            _logger.LogDebug("メッセージ長の読み取りを開始します");
+            
+            while (bytesRead < 4)
+            {
+                var read = await pipeStream.ReadAsync(lengthBuffer.AsMemory(bytesRead, 4 - bytesRead), cancellationToken);
+                if (read == 0)
+                {
+                    _logger.LogDebug("メッセージ長の読み取り中に接続が切断されました");
+                    return string.Empty;
+                }
+                bytesRead += read;
+            }
 
-        var messageLength = BitConverter.ToInt32(lengthBuffer, 0);
-        
-        if (messageLength <= 0 || messageLength > 1024 * 1024) // 1MB制限
+            var messageLength = BitConverter.ToInt32(lengthBuffer, 0);
+            _logger.LogDebug("メッセージ長を読み取りました: {MessageLength}", messageLength);
+            
+            if (messageLength <= 0 || messageLength > 1024 * 1024) // 1MB制限
+            {
+                throw new InvalidOperationException($"無効なメッセージ長: {messageLength}");
+            }
+
+            // メッセージ本体を受信
+            var messageBuffer = new byte[messageLength];
+            bytesRead = 0;
+            
+            while (bytesRead < messageLength)
+            {
+                var read = await pipeStream.ReadAsync(messageBuffer.AsMemory(bytesRead, messageLength - bytesRead), cancellationToken);
+                if (read == 0)
+                    throw new EndOfStreamException("メッセージ受信が予期せず終了しました");
+                bytesRead += read;
+            }
+
+            var message = Encoding.UTF8.GetString(messageBuffer);
+            _logger.LogDebug("メッセージを受信しました: {MessagePreview}", message.Length > 100 ? message[..100] + "..." : message);
+            return message;
+        }
+        catch (Exception ex)
         {
-            throw new InvalidOperationException($"無効なメッセージ長: {messageLength}");
+            _logger.LogError(ex, "メッセージ受信中にエラーが発生しました");
+            throw;
         }
-
-        // メッセージ本体を受信
-        var messageBuffer = new byte[messageLength];
-        bytesRead = 0;
-        
-        while (bytesRead < messageLength)
-        {
-            var read = await pipeStream.ReadAsync(messageBuffer.AsMemory(bytesRead, messageLength - bytesRead), cancellationToken);
-            if (read == 0)
-                throw new EndOfStreamException("メッセージ受信が予期せず終了しました");
-            bytesRead += read;
-        }
-
-        return Encoding.UTF8.GetString(messageBuffer);
     }
 
     /// <summary>

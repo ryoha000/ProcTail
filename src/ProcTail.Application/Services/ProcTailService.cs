@@ -72,24 +72,31 @@ public class ProcTailService : IProcTailService, IDisposable
 
         try
         {
-            _logger.LogInformation("ProcTailServiceを開始しています...");
+            _logger.LogInformation("=== ProcTailServiceを開始しています ===");
 
             // ETWイベント処理の設定
+            _logger.LogInformation("ETWイベントハンドラーを設定中...");
             _etwProvider.EventReceived += OnEtwEventReceived;
+            _logger.LogInformation("ETWイベントハンドラーの設定が完了しました");
 
             // Named Pipeサーバーの要求処理の設定
+            _logger.LogInformation("Named Pipeサーバーのイベントハンドラーを設定中...");
             _pipeServer.RequestReceived += OnPipeRequestReceived;
+            _logger.LogInformation("Named Pipeサーバーのイベントハンドラーの設定が完了しました");
 
             // ETW監視を開始
+            _logger.LogInformation("ETW監視を開始中...");
             await _etwProvider.StartMonitoringAsync(cancellationToken);
-            _logger.LogInformation("ETW監視を開始しました");
+            _logger.LogInformation("ETW監視を開始しました (IsMonitoring: {IsMonitoring})", _etwProvider.IsMonitoring);
 
             // Named Pipeサーバーを開始
+            _logger.LogInformation("Named Pipeサーバーを開始中...");
             await _pipeServer.StartAsync(cancellationToken);
-            _logger.LogInformation("Named Pipeサーバーを開始しました");
+            _logger.LogInformation("Named Pipeサーバーを開始しました (IsRunning: {IsRunning}, PipeName: {PipeName})", 
+                _pipeServer.IsRunning, _pipeServer.PipeName);
 
             _isRunning = true;
-            _logger.LogInformation("ProcTailServiceが正常に開始されました");
+            _logger.LogInformation("=== ProcTailServiceが正常に開始されました ===");
         }
         catch (Exception ex)
         {
@@ -294,6 +301,8 @@ public class ProcTailService : IProcTailService, IDisposable
             return requestType switch
             {
                 "AddWatchTarget" => await ProcessAddWatchTargetRequestAsync(jsonDocument, cancellationToken),
+                "RemoveWatchTarget" => await ProcessRemoveWatchTargetRequestAsync(jsonDocument, cancellationToken),
+                "GetWatchTargets" => await ProcessGetWatchTargetsRequestAsync(cancellationToken),
                 "GetRecordedEvents" => await ProcessGetRecordedEventsRequestAsync(jsonDocument, cancellationToken),
                 "GetStatus" => await ProcessGetStatusRequestAsync(cancellationToken),
                 "ClearEvents" => await ProcessClearEventsRequestAsync(jsonDocument, cancellationToken),
@@ -328,6 +337,49 @@ public class ProcTailService : IProcTailService, IDisposable
         catch (Exception ex)
         {
             return CreateErrorResponse($"AddWatchTarget error: {ex.Message}");
+        }
+    }
+
+    private async Task<string> ProcessRemoveWatchTargetRequestAsync(System.Text.Json.JsonDocument request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var tagName = request.RootElement.GetProperty("TagName").GetString() ?? string.Empty;
+
+            var removedCount = await _watchTargetManager.RemoveWatchTargetsByTagAsync(tagName, cancellationToken);
+
+            var response = new RemoveWatchTargetResponse
+            {
+                Success = removedCount > 0,
+                ErrorMessage = removedCount > 0 ? string.Empty : $"No watch targets found for tag: {tagName}"
+            };
+
+            _logger.LogInformation("監視対象を削除しました (Tag: {TagName}, RemovedCount: {RemovedCount})", tagName, removedCount);
+
+            return System.Text.Json.JsonSerializer.Serialize(response);
+        }
+        catch (Exception ex)
+        {
+            return CreateErrorResponse($"RemoveWatchTarget error: {ex.Message}");
+        }
+    }
+
+    private async Task<string> ProcessGetWatchTargetsRequestAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var watchTargets = await _watchTargetManager.GetWatchTargetInfosAsync();
+
+            var response = new GetWatchTargetsResponse(watchTargets)
+            {
+                Success = true
+            };
+
+            return System.Text.Json.JsonSerializer.Serialize(response);
+        }
+        catch (Exception ex)
+        {
+            return CreateErrorResponse($"GetWatchTargets error: {ex.Message}");
         }
     }
 

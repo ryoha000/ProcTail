@@ -54,3 +54,6 @@ ProcTailは、C# (.NET 8 LTS) で開発されるWindowsワーカーサービス�
 - スタブ化はしないでください
 - 日本語で回答するというメモリを追加
 - ETWの実装はhttps://github.com/microsoft/profile-explorer/tree/877f20663c7ccb6126fb10581ccbcd5bb9eaa23f/src/ProfileExplorerUI/Profile/ETWを参考にしてください
+- コードを変更したときはdotnet testを実行する
+- ビルド時のwarningを無視しない
+- windows上で実行したい場合はpowershell.exe -Command "Start-Process 'F:\workspace\tmp\proctail\cli\Proctail.Host.exe'"のように実行する
