@@ -1,25 +1,6 @@
+using ProcTail.Core.Models;
+
 namespace ProcTail.Core.Interfaces;
-
-/// <summary>
-/// IPC要求イベント引数
-/// </summary>
-public class IpcRequestEventArgs : EventArgs
-{
-    /// <summary>
-    /// 要求JSON
-    /// </summary>
-    public string RequestJson { get; init; } = string.Empty;
-
-    /// <summary>
-    /// 応答送信関数
-    /// </summary>
-    public required Func<string, Task> SendResponseAsync { get; init; }
-
-    /// <summary>
-    /// キャンセレーショントークン
-    /// </summary>
-    public CancellationToken CancellationToken { get; init; }
-}
 
 /// <summary>
 /// Named Pipe通信の抽象化
@@ -54,7 +35,7 @@ public interface INamedPipeServer : IDisposable
 /// <summary>
 /// Named Pipe設定の抽象化
 /// </summary>
-public interface IPipeConfiguration
+public interface INamedPipeConfiguration
 {
     /// <summary>
     /// パイプ名
@@ -67,12 +48,17 @@ public interface IPipeConfiguration
     int MaxConcurrentConnections { get; }
 
     /// <summary>
-    /// 接続タイムアウト
+    /// バッファサイズ（バイト）
     /// </summary>
-    TimeSpan ConnectionTimeout { get; }
+    int BufferSize { get; }
 
     /// <summary>
-    /// セキュリティ記述子
+    /// 応答タイムアウト（秒）
     /// </summary>
-    string SecurityDescriptor { get; }
+    int ResponseTimeoutSeconds { get; }
+
+    /// <summary>
+    /// 接続タイムアウト（秒）
+    /// </summary>
+    int ConnectionTimeoutSeconds { get; }
 }

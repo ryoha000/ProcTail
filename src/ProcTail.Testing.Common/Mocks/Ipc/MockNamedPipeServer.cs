@@ -14,6 +14,7 @@ public class MockNamedPipeServer : INamedPipeServer
     private readonly ConcurrentQueue<string> _messageLog = new();
     private readonly ConcurrentDictionary<string, object> _responses = new();
     private readonly CancellationTokenSource _cancellation = new();
+    private readonly IEventStorage? _eventStorage;
     private bool _isRunning;
     private bool _disposed;
 
@@ -26,9 +27,11 @@ public class MockNamedPipeServer : INamedPipeServer
     /// コンストラクタ
     /// </summary>
     /// <param name="config">モック設定</param>
-    public MockNamedPipeServer(MockNamedPipeConfiguration? config = null)
+    /// <param name="eventStorage">イベントストレージ（オプション）</param>
+    public MockNamedPipeServer(MockNamedPipeConfiguration? config = null, IEventStorage? eventStorage = null)
     {
         _config = config ?? MockNamedPipeConfiguration.Default;
+        _eventStorage = eventStorage;
     }
 
     /// <summary>
@@ -157,15 +160,13 @@ public class MockNamedPipeServer : INamedPipeServer
         }
 
         string? response = null;
-        var eventArgs = new IpcRequestEventArgs
+        var eventArgs = new IpcRequestEventArgs(requestJson, cancellationToken)
         {
-            RequestJson = requestJson,
-            SendResponseAsync = async (responseJson) =>
+            ResponseSender = async (responseJson) =>
             {
                 response = responseJson;
                 await Task.CompletedTask;
-            },
-            CancellationToken = cancellationToken
+            }
         };
 
         RequestReceived.Invoke(this, eventArgs);
@@ -249,8 +250,20 @@ public class MockNamedPipeServer : INamedPipeServer
             var tagName = request.RootElement.GetProperty("TagName").GetString();
             var maxCount = request.RootElement.GetProperty("MaxCount").GetInt32();
             
-            // テスト用のダミーイベントを生成
-            var events = GenerateTestEvents(tagName, maxCount);
+            List<BaseEventData> events;
+            
+            // 実際のEventStorageが利用可能な場合はそれを使用
+            if (_eventStorage != null && !string.IsNullOrEmpty(tagName))
+            {
+                events = _eventStorage.GetEventsAsync(tagName).GetAwaiter().GetResult()
+                    .Take(maxCount)
+                    .ToList();
+            }
+            else
+            {
+                // フォールバック: テスト用のダミーイベントを生成
+                events = GenerateTestEvents(tagName, maxCount);
+            }
             
             var response = new GetRecordedEventsResponse(events)
             {

@@ -74,10 +74,8 @@ public class MockEtwEventProvider : IEtwEventProvider
     /// <param name="eventData">イベントデータ</param>
     public void TriggerEvent(RawEventData eventData)
     {
-        if (_isMonitoring)
-        {
-            EventReceived?.Invoke(this, eventData);
-        }
+        // 手動トリガーは監視状態に関係なく常に実行
+        EventReceived?.Invoke(this, eventData);
     }
 
     /// <summary>
@@ -215,4 +213,6 @@ public class MockEtwConfiguration : IEtwConfiguration
     };
 
     public TimeSpan EventBufferTimeout => TimeSpan.FromMilliseconds(100);
+    public int BufferSizeMB => 64;
+    public int BufferCount => 20;
 }

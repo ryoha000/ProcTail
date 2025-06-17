@@ -260,7 +260,7 @@ _Pvt_Extensions
 # Paket dependency manager
 .paket/paket.exe
 paket-files/
-
+Windowsサービス化、設定ファイルの完全化、CLIコマンドの完全実装について順に実装してください
 # FAKE - F# Make
 .fake/
 

@@ -95,7 +95,7 @@ public class MockEtwEventProviderTests
     }
 
     [Test]
-    public void TriggerEvent_WhenNotMonitoring_ShouldNotRaiseEvent()
+    public void TriggerEvent_WhenNotMonitoring_ShouldStillRaiseEvent()
     {
         // Arrange
         var eventRaised = false;
@@ -116,7 +116,7 @@ public class MockEtwEventProviderTests
         _provider.TriggerEvent(testEvent);
 
         // Assert
-        eventRaised.Should().BeFalse();
+        eventRaised.Should().BeTrue("手動トリガーは監視状態に関係なく常に実行される");
     }
 
     [Test]
@@ -124,13 +124,26 @@ public class MockEtwEventProviderTests
     {
         // Arrange
         RawEventData? receivedEvent = null;
-        _provider.EventReceived += (sender, eventData) => receivedEvent = eventData;
+        bool targetEventReceived = false;
+        _provider.EventReceived += (sender, eventData) => 
+        {
+            // 期待するProcessIdとイベントタイプのイベントのみをキャプチャ
+            if (eventData.ProcessId == 1234 && eventData.EventName == "FileIo/Create")
+            {
+                receivedEvent = eventData;
+                targetEventReceived = true;
+            }
+        };
 
         // Act
         _ = _provider.StartMonitoringAsync();
         _provider.TriggerFileEvent(1234, @"C:\test.txt", "Create");
 
+        // バックグラウンドイベントの影響を回避するため少し待機
+        Thread.Sleep(50);
+
         // Assert
+        targetEventReceived.Should().BeTrue("期待するProcessIdとイベントタイプのイベントが受信されるべき");
         receivedEvent.Should().NotBeNull();
         receivedEvent!.ProviderName.Should().Be("Microsoft-Windows-Kernel-FileIO");
         receivedEvent.EventName.Should().Be("FileIo/Create");
@@ -144,13 +157,26 @@ public class MockEtwEventProviderTests
     {
         // Arrange
         RawEventData? receivedEvent = null;
-        _provider.EventReceived += (sender, eventData) => receivedEvent = eventData;
+        bool targetEventReceived = false;
+        _provider.EventReceived += (sender, eventData) => 
+        {
+            // 期待するProcessIdのイベントのみをキャプチャ
+            if (eventData.ProcessId == 1234 && eventData.EventName == "Process/Start")
+            {
+                receivedEvent = eventData;
+                targetEventReceived = true;
+            }
+        };
 
         // Act
         _ = _provider.StartMonitoringAsync();
         _provider.TriggerProcessEvent(1234, MockEventGenerator.ProcessEventType.Start);
 
+        // バックグラウンドイベントの影響を回避するため少し待機
+        Thread.Sleep(50);
+
         // Assert
+        targetEventReceived.Should().BeTrue("期待するProcessIdのイベントが受信されるべき");
         receivedEvent.Should().NotBeNull();
         receivedEvent!.ProviderName.Should().Be("Microsoft-Windows-Kernel-Process");
         receivedEvent.EventName.Should().Be("Process/Start");

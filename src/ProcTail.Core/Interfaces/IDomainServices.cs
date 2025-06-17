@@ -49,6 +49,14 @@ public interface IWatchTargetManager
     /// <param name="processId">プロセスID</param>
     /// <returns>削除成功の場合true</returns>
     bool RemoveTarget(int processId);
+
+    /// <summary>
+    /// タグ名で監視対象を削除
+    /// </summary>
+    /// <param name="tagName">タグ名</param>
+    /// <param name="cancellationToken">キャンセレーショントークン</param>
+    /// <returns>削除された監視対象数</returns>
+    Task<int> RemoveWatchTargetsByTagAsync(string tagName, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -110,6 +118,29 @@ public interface IEventStorage
     /// </summary>
     /// <returns>統計情報</returns>
     Task<StorageStatistics> GetStatisticsAsync();
+
+    /// <summary>
+    /// 全てのタグ名を取得
+    /// </summary>
+    /// <returns>タグ名一覧</returns>
+    Task<IReadOnlyList<string>> GetAllTagsAsync();
+
+    /// <summary>
+    /// 時間範囲でイベントを取得
+    /// </summary>
+    /// <param name="tagName">タグ名</param>
+    /// <param name="startTime">開始時刻</param>
+    /// <param name="endTime">終了時刻</param>
+    /// <returns>イベント一覧</returns>
+    Task<IReadOnlyList<BaseEventData>> GetEventsByTimeRangeAsync(string tagName, DateTime startTime, DateTime endTime);
+
+    /// <summary>
+    /// 最新のイベントを取得
+    /// </summary>
+    /// <param name="tagName">タグ名</param>
+    /// <param name="count">取得件数</param>
+    /// <returns>イベント一覧</returns>
+    Task<IReadOnlyList<BaseEventData>> GetLatestEventsAsync(string tagName, int count);
 }
 
 /// <summary>

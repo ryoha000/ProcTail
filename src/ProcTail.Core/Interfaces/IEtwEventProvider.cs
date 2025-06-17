@@ -51,4 +51,14 @@ public interface IEtwConfiguration
     /// イベントバッファタイムアウト
     /// </summary>
     TimeSpan EventBufferTimeout { get; }
+
+    /// <summary>
+    /// ETWセッションのバッファサイズ（MB）
+    /// </summary>
+    int BufferSizeMB { get; }
+
+    /// <summary>
+    /// ETWセッションのバッファ数
+    /// </summary>
+    int BufferCount { get; }
 }

@@ -44,7 +44,11 @@ public static class MockServiceFactory
 
         // モックサービス登録
         services.AddSingleton<IEtwEventProvider, MockEtwEventProvider>();
-        services.AddSingleton<INamedPipeServer, MockNamedPipeServer>();
+        services.AddSingleton<INamedPipeServer>(provider =>
+        {
+            var eventStorage = provider.GetService<IEventStorage>();
+            return new MockNamedPipeServer(pipeConfig, eventStorage);
+        });
 
         return services;
     }

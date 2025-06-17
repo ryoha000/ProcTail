@@ -48,3 +48,9 @@ ProcTailは、C# (.NET 8 LTS) で開発されるWindowsワーカーサービス�
 - 各タグのキューに設定可能な上限件数、超過時は古いイベントをFIFO削除
 - Shutdownシグナル受信時のリソースクリーンアップ（ETWセッション、IPCリスナー停止）
 - ポリモーフィックJSONシリアライズには `[JsonPolymorphic]`, `[JsonDerivedType]` 属性を使用
+
+## メモリ
+
+- スタブ化はしないでください
+- 日本語で回答するというメモリを追加
+- ETWの実装はhttps://github.com/microsoft/profile-explorer/tree/877f20663c7ccb6126fb10581ccbcd5bb9eaa23f/src/ProfileExplorerUI/Profile/ETWを参考にしてください

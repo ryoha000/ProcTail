@@ -7,12 +7,20 @@
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
     <NoWarn>$(NoWarn);NUnit1032</NoWarn>
+    <!-- Windows-specific configuration -->
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+
+  <!-- Windows-specific conditional compilation -->
+  <PropertyGroup Condition="'$(OS)' == 'Windows_NT'">
+    <DefineConstants>$(DefineConstants);WINDOWS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ProcTail.Core\ProcTail.Core.csproj" />
     <ProjectReference Include="..\..\src\ProcTail.Infrastructure\ProcTail.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\ProcTail.Application\ProcTail.Application.csproj" />
+    <ProjectReference Include="..\..\src\ProcTail.Host\ProcTail.Host.csproj" />
     <ProjectReference Include="..\..\src\ProcTail.Testing.Common\ProcTail.Testing.Common.csproj" />
   </ItemGroup>
 
@@ -25,6 +33,11 @@
     <PackageReference Include="Moq" Version="4.20.70" />
     <PackageReference Include="FluentAssertions" Version="6.12.0" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <!-- Windows-specific packages -->
+    <PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.8" />
+    <PackageReference Include="System.IO.Pipes.AccessControl" Version="5.0.0" />
   </ItemGroup>
 
 </Project>
