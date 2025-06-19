@@ -7,6 +7,7 @@ using ProcTail.Host.Workers;
 using ProcTail.Infrastructure.Configuration;
 using ProcTail.Infrastructure.Etw;
 using ProcTail.Infrastructure.NamedPipes;
+using Serilog;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -30,46 +31,78 @@ public class Program
         // 早期ログ設定（Console出力のみ）
         var logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
         Directory.CreateDirectory(logDirectory);
+        
+        // Create debug log directory
+        var debugLogDirectory = @"C:\ProcTail-Test-Logs";
+        Directory.CreateDirectory(debugLogDirectory);
+
+        // Configure Serilog early
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Debug()
+            .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+            .WriteTo.File(Path.Combine(debugLogDirectory, "host-.log"), 
+                rollingInterval: RollingInterval.Day,
+                outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+            .CreateLogger();
 
         try
         {
             // Windows環境チェック
+            Log.Information("ProcTail Host starting...");
+            Log.Information("Command line args: {Args}", string.Join(" ", args));
+            
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
+                Log.Error("このアプリケーションはWindows環境でのみ動作します。");
                 Console.WriteLine("このアプリケーションはWindows環境でのみ動作します。");
                 Environment.Exit(1);
                 return;
             }
 
+            Log.Information("Windows platform confirmed");
+
             // 管理者権限チェック
             if (!IsRunningAsAdministrator())
             {
+                Log.Error("このアプリケーションは管理者権限が必要です。");
                 Console.WriteLine("このアプリケーションは管理者権限が必要です。");
                 
                 // UACプロンプトによる権限昇格を試行
                 if (args.Length == 0 || !args.Contains("--no-uac"))
                 {
+                    Log.Information("UACプロンプトによる権限昇格を試行します");
                     Console.WriteLine("UACプロンプトによる権限昇格を試行します");
                     await RequestAdministratorPrivilegesAsync(args);
                     return;
                 }
                 else
                 {
+                    Log.Error("管理者権限なしでは実行できません。");
                     Console.WriteLine("管理者権限なしでは実行できません。");
                     Environment.Exit(1);
                     return;
                 }
             }
 
+            Log.Information("Administrator privileges confirmed");
+
             // ホストビルダーを作成して実行
+            Log.Information("Creating host builder...");
             var host = CreateHostBuilder(args).Build();
+            
+            Log.Information("Starting host...");
             await host.RunAsync();
         }
         catch (Exception ex)
         {
+            Log.Fatal(ex, "アプリケーション開始中にエラーが発生しました");
             Console.WriteLine($"アプリケーション開始中にエラーが発生しました: {ex.Message}");
             Console.WriteLine($"詳細: {ex}");
             Environment.Exit(1);
+        }
+        finally
+        {
+            Log.CloseAndFlush();
         }
     }
 
@@ -94,12 +127,11 @@ public class Program
         }
 
         return builder
+            .UseSerilog() // Use Serilog instead of default logging
             .ConfigureLogging((context, logging) =>
             {
-                // デフォルトロギングを使用
+                // Clear default providers since we're using Serilog
                 logging.ClearProviders();
-                logging.AddConsole();
-                logging.SetMinimumLevel(LogLevel.Information);
             })
             .ConfigureServices((context, services) =>
             {
