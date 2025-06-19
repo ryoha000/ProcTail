@@ -52,10 +52,56 @@ public class EtwConfiguration : IEtwConfiguration
     /// </summary>
     public EtwConfiguration()
     {
-        EnabledProviders = Array.Empty<string>();
-        EnabledEventNames = Array.Empty<string>();
-        FilteringOptions = new EtwFilteringOptions();
-        PerformanceOptions = new EtwPerformanceOptions();
+        // デフォルト設定を設定
+        BufferSizeMB = 64;
+        BufferCount = 20;
+        EventBufferTimeout = TimeSpan.FromMilliseconds(1000);
+        
+        EnabledProviders = new[]
+        {
+            "Microsoft-Windows-Kernel-FileIO",
+            "Microsoft-Windows-Kernel-Process"
+        };
+        
+        EnabledEventNames = new[]
+        {
+            "FileIO/Create",
+            "FileIO/Write",
+            "FileIO/Delete",
+            "FileIO/Rename",
+            "FileIO/SetInfo",
+            "Process/Start",
+            "Process/End"
+        };
+        
+        FilteringOptions = new EtwFilteringOptions
+        {
+            ExcludeSystemProcesses = true,
+            MinimumProcessId = 4,
+            ExcludedProcessNames = new[]
+            {
+                "System", "Registry", "smss.exe", "csrss.exe", "wininit.exe"
+            }.AsReadOnly(),
+            IncludeFileExtensions = new[]
+            {
+                ".txt", ".log", ".exe", ".dll"
+            }.AsReadOnly(),
+            ExcludeFilePatterns = new[]
+            {
+                "C:\\Windows\\System32\\*",
+                "*\\Temp\\*"
+            }.AsReadOnly()
+        };
+        
+        PerformanceOptions = new EtwPerformanceOptions
+        {
+            EventProcessingBatchSize = 100,
+            MaxEventQueueSize = 10000,
+            EventProcessingIntervalMs = 10,
+            EnableHighFrequencyEvents = false,
+            MaxEventsPerSecond = 1000
+        };
+        
         _logger = null!;
         _configuration = null!;
     }
@@ -86,6 +132,14 @@ public class EtwConfiguration : IEtwConfiguration
         try
         {
             var etwSection = _configuration.GetSection("ETW");
+            
+            // 設定ファイルが存在するかチェック
+            if (!etwSection.Exists())
+            {
+                _logger.LogWarning("ETW設定セクションが見つかりません。デフォルト設定を使用します。");
+                LoadDefaultConfiguration();
+                return;
+            }
 
             // プロバイダー設定
             var providers = etwSection.GetSection("EnabledProviders").Get<string[]>() ?? GetDefaultProviders();
@@ -163,6 +217,9 @@ public class EtwConfiguration : IEtwConfiguration
             EnableHighFrequencyEvents = false,
             MaxEventsPerSecond = 1000
         };
+
+        _logger?.LogInformation("デフォルトETW設定を使用します - プロバイダー: {ProviderCount}, イベント: {EventCount}, ファイル監視: 有効", 
+            EnabledProviders.Count, EnabledEventNames.Count);
     }
 
     /// <summary>
@@ -184,9 +241,13 @@ public class EtwConfiguration : IEtwConfiguration
     {
         return new[]
         {
-            "FileIo/Create",
-            "FileIo/Write",
-            "FileIo/Read",
+            "FileIO/Create",
+            "FileIO/Write", 
+            "FileIO/Read",
+            "FileIO/Delete",
+            "FileIO/Rename",
+            "FileIO/SetInfo",
+            "FileIO/Close",
             "Process/Start",
             "Process/Stop"
         };

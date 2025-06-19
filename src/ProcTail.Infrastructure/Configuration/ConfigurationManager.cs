@@ -272,6 +272,7 @@ public class ConfigurationManager : Core.Interfaces.IConfigurationManager, IConf
         try
         {
             var configPath = GetConfigurationFilePath();
+            
             if (string.IsNullOrEmpty(configPath) || !File.Exists(configPath))
             {
                 _logger.LogWarning("設定ファイルが見つからないため、ファイル監視は無効です");

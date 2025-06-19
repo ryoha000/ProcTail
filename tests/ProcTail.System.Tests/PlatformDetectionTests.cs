@@ -9,6 +9,8 @@ using ProcTail.Infrastructure.Configuration;
 using ProcTail.Infrastructure.Etw;
 using ProcTail.Infrastructure.NamedPipes;
 using ProcTail.System.Tests.Infrastructure;
+using ProcTail.Testing.Common.Mocks.Etw;
+using ProcTail.Testing.Common.Mocks.Ipc;
 
 namespace ProcTail.System.Tests;
 
@@ -129,8 +131,9 @@ public class PlatformDetectionTests
         }
         else
         {
-            // On non-Windows: This would typically register stub/mock implementations
-            // For this test, we'll just verify the Windows services throw as expected
+            // On non-Windows: Register mock implementations
+            services.AddSingleton<IEtwEventProvider, MockEtwEventProvider>();
+            services.AddSingleton<INamedPipeServer, MockNamedPipeServer>();
         }
 
         var serviceProvider = services.BuildServiceProvider();
@@ -149,12 +152,16 @@ public class PlatformDetectionTests
         }
         else
         {
-            // On non-Windows, direct instantiation should fail
-            var etwAction = () => serviceProvider.GetRequiredService<WindowsEtwEventProvider>();
-            var pipeAction = () => serviceProvider.GetRequiredService<WindowsNamedPipeServer>();
+            // On non-Windows, these services should not be registered
+            var etwProvider = serviceProvider.GetService<IEtwEventProvider>();
+            var pipeServer = serviceProvider.GetService<INamedPipeServer>();
 
-            etwAction.Should().Throw<PlatformNotSupportedException>();
-            pipeAction.Should().Throw<PlatformNotSupportedException>();
+            // These should be mock implementations, not Windows implementations
+            etwProvider.Should().NotBeNull("Mock ETW provider should be resolvable on non-Windows");
+            etwProvider.Should().BeOfType<MockEtwEventProvider>();
+
+            pipeServer.Should().NotBeNull("Mock Named Pipe server should be resolvable on non-Windows");
+            pipeServer.Should().BeOfType<MockNamedPipeServer>();
         }
     }
 

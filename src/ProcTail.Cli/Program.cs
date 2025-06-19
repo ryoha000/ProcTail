@@ -112,6 +112,7 @@ public class Program
         rootCommand.AddCommand(CreateStatusCommand());
         rootCommand.AddCommand(CreateClearCommand());
         rootCommand.AddCommand(CreateServiceCommand());
+        rootCommand.AddCommand(CreateCleanupCommand());
         rootCommand.AddCommand(CreateVersionCommand());
 
         return rootCommand;
@@ -366,6 +367,14 @@ public class Program
     }
 
     /// <summary>
+    /// cleanupコマンドを作成
+    /// </summary>
+    private static Command CreateCleanupCommand()
+    {
+        return CleanupCommand.CreateCommand();
+    }
+
+    /// <summary>
     /// versionコマンドを作成
     /// </summary>
     private static Command CreateVersionCommand()
@@ -376,8 +385,44 @@ public class Program
         {
             var assembly = System.Reflection.Assembly.GetExecutingAssembly();
             var version = assembly.GetName().Version?.ToString() ?? "不明";
-            var fileVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(assembly.Location).FileVersion ?? "不明";
-            var buildDate = System.IO.File.GetCreationTime(assembly.Location);
+            
+            // Single-file deployment対応: assembly.Locationが空の場合はProcess.GetCurrentProcess().MainModule.FileNameを使用
+            var assemblyLocation = assembly.Location;
+            if (string.IsNullOrEmpty(assemblyLocation))
+            {
+                assemblyLocation = System.AppContext.BaseDirectory;
+                var processModule = System.Diagnostics.Process.GetCurrentProcess().MainModule;
+                if (processModule?.FileName != null)
+                {
+                    assemblyLocation = processModule.FileName;
+                }
+            }
+            
+            var fileVersion = "不明";
+            var buildDate = DateTime.MinValue;
+            
+            try
+            {
+                if (!string.IsNullOrEmpty(assemblyLocation) && System.IO.File.Exists(assemblyLocation))
+                {
+                    fileVersion = System.Diagnostics.FileVersionInfo.GetVersionInfo(assemblyLocation).FileVersion ?? "不明";
+                    buildDate = System.IO.File.GetCreationTime(assemblyLocation);
+                }
+                else
+                {
+                    // Fallback: アセンブリの属性から情報を取得
+                    var fileVersionAttr = System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyFileVersionAttribute>(assembly);
+                    if (fileVersionAttr != null)
+                    {
+                        fileVersion = fileVersionAttr.Version;
+                    }
+                    buildDate = DateTime.Now; // Fallback
+                }
+            }
+            catch
+            {
+                // エラーが発生した場合はデフォルト値を使用
+            }
 
             Console.WriteLine("ProcTail CLI Tool");
             Console.WriteLine($"バージョン: {version}");

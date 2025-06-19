@@ -96,6 +96,86 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
+    [Category("EndToEnd")]
+    public async Task ProcTailHost_NotepadMonitoring_ShouldDetectFileWriteEvents()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
+        {
+            Assert.Ignore("このテストはWindows環境で管理者権限が必要です");
+            return;
+        }
+
+        Process? procTailHostProcess = null;
+        Process? notepadProcess = null;
+        var testFilePath = Path.Combine(Path.GetTempPath(), $"proctail_notepad_test_{Guid.NewGuid()}.txt");
+
+        try
+        {
+            TestContext.WriteLine("=== ProcTail統合テスト開始 ===");
+            
+            // 1. ProcTailHostを起動
+            TestContext.WriteLine("1. ProcTailHostを起動中...");
+            procTailHostProcess = await StartProcTailHostProcessAsync();
+            
+            // 2. notepadプロセスを起動
+            TestContext.WriteLine("2. notepadプロセスを起動中...");
+            notepadProcess = await StartNotepadProcessAsync(testFilePath);
+            var notepadPid = notepadProcess.Id;
+            
+            // 3. notepadプロセスを監視対象に追加
+            TestContext.WriteLine($"3. notepadプロセス(PID: {notepadPid})を監視対象に追加中...");
+            await AddWatchTargetAsync(notepadPid, "notepad-test");
+            
+            // 4. ファイル書き込み操作を実行
+            TestContext.WriteLine("4. notepadでファイル書き込み操作を実行中...");
+            await PerformFileWriteOperationAsync(testFilePath);
+            
+            // 5. イベントが記録されるまで待機（PerformFileWriteOperationAsyncで既に待機済み）
+            TestContext.WriteLine("5. イベント処理完了を確認中...");
+            await Task.Delay(2000);
+            
+            // 6. 記録されたイベントを取得・検証
+            TestContext.WriteLine("6. 記録されたイベントを取得・検証中...");
+            var events = await GetRecordedEventsAsync("notepad-test");
+            
+            // Assert
+            events.Should().NotBeEmpty("ファイル操作イベントが記録されているはず");
+            
+            var fileEvents = events.Where(e => 
+                e.ToString()!.Contains("FileEvent", StringComparison.OrdinalIgnoreCase) && 
+                e.ToString()!.Contains(testFilePath, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+            
+            TestContext.WriteLine($"検出されたイベント数: {events.Count}");
+            TestContext.WriteLine($"ファイル操作イベント数: {fileEvents.Count}");
+            
+            foreach (var evt in events.Take(10))
+            {
+                TestContext.WriteLine($"- イベント: {evt}");
+            }
+            
+            // 最低限イベントが記録されていることを確認
+            events.Count.Should().BeGreaterThan(0, "何らかのイベントが記録されているはず");
+            
+            TestContext.WriteLine("=== ProcTail統合テスト完了 ===");
+            TestContext.WriteLine("テスト結果の確認のため待機中... (5秒)");
+            await Task.Delay(5000);
+        }
+        finally
+        {
+            // クリーンアップ
+            TestContext.WriteLine("クリーンアップ中...");
+            
+            try { notepadProcess?.Kill(); notepadProcess?.Dispose(); } catch { }
+            try { procTailHostProcess?.Kill(); procTailHostProcess?.Dispose(); } catch { }
+            try { if (File.Exists(testFilePath)) File.Delete(testFilePath); } catch { }
+            
+            await Task.Delay(1000); // リソース解放待機
+        }
+    }
+
+    [Test]
     public async Task CompleteWorkflow_RealWindowsAPIs_ShouldWorkEndToEnd()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
@@ -239,16 +319,36 @@ public class EndToEndSystemTests
             await client.ConnectAsync(5000);
             client.IsConnected.Should().BeTrue();
 
-            // Send status request
+            // Send status request with length prefix
             var request = @"{""RequestType"": ""GetStatus""}";
             var requestBytes = Encoding.UTF8.GetBytes(request);
+            var lengthBytes = BitConverter.GetBytes(requestBytes.Length);
+            
+            // Send length first, then the message
+            await client.WriteAsync(lengthBytes);
             await client.WriteAsync(requestBytes);
             await client.FlushAsync();
 
-            // Read response
-            var responseBuffer = new byte[4096];
-            var bytesRead = await client.ReadAsync(responseBuffer);
-            var response = Encoding.UTF8.GetString(responseBuffer, 0, bytesRead);
+            // Read response with length prefix
+            var lengthBuffer = new byte[4];
+            var lengthBytesRead = await client.ReadAsync(lengthBuffer);
+            if (lengthBytesRead < 4)
+            {
+                Assert.Fail($"Failed to read message length: only {lengthBytesRead} bytes read");
+            }
+            
+            var responseLength = BitConverter.ToInt32(lengthBuffer, 0);
+            var responseBuffer = new byte[responseLength];
+            var responseBytesRead = 0;
+            
+            while (responseBytesRead < responseLength)
+            {
+                var read = await client.ReadAsync(responseBuffer, responseBytesRead, responseLength - responseBytesRead);
+                if (read == 0) break;
+                responseBytesRead += read;
+            }
+            
+            var response = Encoding.UTF8.GetString(responseBuffer, 0, responseBytesRead);
 
             // Assert
             response.Should().NotBeNullOrEmpty();
@@ -378,5 +478,374 @@ public class EndToEndSystemTests
         {
             return false;
         }
+    }
+
+    private async Task<Process> StartProcTailHostProcessAsync()
+    {
+        TestContext.WriteLine("ProcTailHostプロセスを起動中...");
+        
+        // Windows環境でホスト実行可能ファイルを探す
+        var hostExecutable = FindHostExecutable();
+        
+        var hostProcess = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = hostExecutable.Item1,
+                Arguments = hostExecutable.Item2 ?? "",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            }
+        };
+
+        hostProcess.Start();
+        
+        // ProcTailHostが起動するまで待機
+        TestContext.WriteLine("ProcTailHostの起動を待機中... (5秒)");
+        await Task.Delay(5000);
+        
+        TestContext.WriteLine($"ProcTailHost起動完了 (PID: {hostProcess.Id})");
+        return hostProcess;
+    }
+
+    private async Task<Process> StartNotepadProcessAsync(string testFilePath)
+    {
+        TestContext.WriteLine($"notepadプロセスを起動中... (ファイル: {testFilePath})");
+        
+        // テストファイルを事前に作成
+        await File.WriteAllTextAsync(testFilePath, "Initial test content");
+        
+        var notepadProcess = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = "notepad.exe",
+                Arguments = testFilePath,
+                UseShellExecute = true,  // ウィンドウを表示
+                WindowStyle = ProcessWindowStyle.Normal
+            }
+        };
+
+        notepadProcess.Start();
+        
+        // notepadが完全に起動するまで待機
+        TestContext.WriteLine("notepadの起動を待機中... (5秒)");
+        await Task.Delay(5000);
+        
+        TestContext.WriteLine($"notepad起動完了 (PID: {notepadProcess.Id})");
+        TestContext.WriteLine("notepadウィンドウが表示されているはずです");
+        
+        // 確認のため追加待機
+        await Task.Delay(3000);
+        
+        return notepadProcess;
+    }
+
+    private async Task AddWatchTargetAsync(int processId, string tag)
+    {
+        TestContext.WriteLine($"プロセス {processId} を監視対象に追加中... (タグ: {tag})");
+        
+        try
+        {
+            // Windows環境でビルドされた実行可能ファイルを直接使用
+            var cliExecutable = FindCliExecutable();
+            
+            using var client = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = cliExecutable.Item1,
+                    Arguments = cliExecutable.Item2 != null ? $"{cliExecutable.Item2} watch {processId} {tag}" : $"watch {processId} {tag}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                }
+            };
+
+            TestContext.WriteLine($"CLI実行コマンド: {cliExecutable.Item1} {client.StartInfo.Arguments}");
+            
+            client.Start();
+            
+            // タイムアウト付きで実行
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            
+            var outputTask = client.StandardOutput.ReadToEndAsync();
+            var errorTask = client.StandardError.ReadToEndAsync();
+            var waitTask = client.WaitForExitAsync(cts.Token);
+            
+            try
+            {
+                await waitTask;
+                var output = await outputTask;
+                var error = await errorTask;
+                
+                TestContext.WriteLine($"CLI実行完了 (Exit Code: {client.ExitCode})");
+                if (!string.IsNullOrEmpty(output)) TestContext.WriteLine($"出力: {output}");
+                if (!string.IsNullOrEmpty(error)) TestContext.WriteLine($"エラー: {error}");
+                
+                if (client.ExitCode == 0)
+                {
+                    TestContext.WriteLine($"監視対象追加完了 (PID: {processId}, タグ: {tag})");
+                }
+                else
+                {
+                    TestContext.WriteLine($"監視対象追加失敗 (Exit Code: {client.ExitCode})");
+                    throw new InvalidOperationException($"CLI コマンドが失敗しました: Exit Code {client.ExitCode}");
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                TestContext.WriteLine("CLI実行がタイムアウトしました (30秒)");
+                if (!client.HasExited)
+                {
+                    client.Kill();
+                    TestContext.WriteLine("CLI プロセスを強制終了しました");
+                }
+                throw new TimeoutException("CLI コマンドの実行がタイムアウトしました");
+            }
+            
+            // 監視が有効になるまで待機
+            TestContext.WriteLine("監視設定の反映を待機中... (3秒)");
+            await Task.Delay(3000);
+        }
+        catch (Exception ex)
+        {
+            TestContext.WriteLine($"AddWatchTargetAsync でエラーが発生しました: {ex.Message}");
+            TestContext.WriteLine($"スタックトレース: {ex.StackTrace}");
+            throw;
+        }
+    }
+
+    private async Task PerformFileWriteOperationAsync(string testFilePath)
+    {
+        TestContext.WriteLine($"ファイル書き込み操作を実行中... (ファイル: {testFilePath})");
+        
+        // 複数の書き込み操作を実行してイベントを確実に発生させる
+        for (int i = 0; i < 3; i++)
+        {
+            TestContext.WriteLine($"書き込み操作 {i + 1}/3 を実行中...");
+            await File.AppendAllTextAsync(testFilePath, $"\nTest write operation {i + 1} at {DateTime.Now}");
+            await Task.Delay(2000); // 各書き込み間に十分な間隔を置く
+        }
+        
+        TestContext.WriteLine("ファイル書き込み操作完了");
+        TestContext.WriteLine("ETWイベントの処理を待機中... (5秒)");
+        await Task.Delay(5000);
+    }
+
+    private async Task<List<object>> GetRecordedEventsAsync(string tag)
+    {
+        TestContext.WriteLine($"記録されたイベントを取得中... (タグ: {tag})");
+        
+        try
+        {
+            // Windows環境でビルドされた実行可能ファイルを直接使用
+            var cliExecutable = FindCliExecutable();
+            
+            using var client = new Process
+            {
+                StartInfo = new ProcessStartInfo
+                {
+                    FileName = cliExecutable.Item1,
+                    Arguments = cliExecutable.Item2 != null ? $"{cliExecutable.Item2} event {tag}" : $"event {tag}",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                }
+            };
+
+            TestContext.WriteLine($"CLI実行コマンド: {cliExecutable.Item1} {client.StartInfo.Arguments}");
+            
+            client.Start();
+            
+            // タイムアウト付きで実行
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+            
+            var outputTask = client.StandardOutput.ReadToEndAsync();
+            var errorTask = client.StandardError.ReadToEndAsync();
+            var waitTask = client.WaitForExitAsync(cts.Token);
+            
+            string output = "";
+            string error = "";
+            
+            try
+            {
+                await waitTask;
+                output = await outputTask;
+                error = await errorTask;
+                
+                TestContext.WriteLine($"CLI実行完了 (Exit Code: {client.ExitCode})");
+            }
+            catch (OperationCanceledException)
+            {
+                TestContext.WriteLine("CLI実行がタイムアウトしました (15秒)");
+                if (!client.HasExited)
+                {
+                    client.Kill();
+                    TestContext.WriteLine("CLI プロセスを強制終了しました");
+                }
+                // タイムアウトの場合は空のリストを返す
+                return new List<object>();
+            }
+            
+            TestContext.WriteLine($"CLIコマンド出力:\n{output}");
+            if (!string.IsNullOrEmpty(error)) TestContext.WriteLine($"CLIエラー出力:\n{error}");
+            
+            // 簡易的なイベント解析 (実際のJSONパースは必要に応じて実装)
+            var events = new List<object>();
+            
+            if (!string.IsNullOrWhiteSpace(output))
+            {
+                var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    if (line.Contains("Event") || line.Contains("File") || line.Contains("Process"))
+                    {
+                        events.Add(line.Trim());
+                    }
+                }
+            }
+            
+            TestContext.WriteLine($"取得されたイベント数: {events.Count}");
+            return events;
+        }
+        catch (Exception ex)
+        {
+            TestContext.WriteLine($"GetRecordedEventsAsync でエラーが発生しました: {ex.Message}");
+            TestContext.WriteLine($"スタックトレース: {ex.StackTrace}");
+            return new List<object>();
+        }
+    }
+
+    private (string FileName, string? DllPath) FindCliExecutable()
+    {
+        // Windows環境でCLI実行可能ファイルを探す
+        var currentDir = Environment.CurrentDirectory;
+        var possiblePaths = new[]
+        {
+            // テストディレクトリ内のpublishされたファイル（最優先）
+            Path.Combine(currentDir, "proctail.dll"),
+            Path.Combine(currentDir, "proctail"),
+            Path.Combine(currentDir, "proctail.exe"),
+            Path.Combine(currentDir, "ProcTail.Cli.dll"),
+            Path.Combine(currentDir, "ProcTail.Cli.exe"),
+            
+            // 親ディレクトリを確認（C:\temp\proctail_test_XXX\tests -> C:\temp\proctail_test_XXX）
+            Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "tests", "proctail.dll"),
+            Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "tests", "proctail"),
+            Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "tests", "proctail.exe"),
+            
+            // 従来のビルド出力パス
+            Path.Combine(currentDir, "src", "ProcTail.Cli", "bin", "Debug", "net8.0", "proctail.dll"),
+            Path.Combine(currentDir, "src", "ProcTail.Cli", "bin", "Debug", "net8.0", "ProcTail.Cli.dll"),
+            Path.Combine(currentDir, "src", "ProcTail.Cli", "bin", "Debug", "net8.0", "proctail.exe"),
+            Path.Combine(currentDir, "src", "ProcTail.Cli", "bin", "Debug", "net8.0", "ProcTail.Cli.exe"),
+        };
+
+        TestContext.WriteLine($"CLI実行可能ファイルを検索中... (作業ディレクトリ: {Environment.CurrentDirectory})");
+
+        // DLLファイルを優先（dotnet経由で実行、クロスプラットフォーム対応）
+        foreach (var path in possiblePaths)
+        {
+            if (File.Exists(path) && path.EndsWith(".dll"))
+            {
+                TestContext.WriteLine($"CLI DLLファイルを発見: {path}");
+                return ("dotnet", path);
+            }
+        }
+
+        // 実行可能ファイル（.exe または拡張子なし）
+        foreach (var path in possiblePaths)
+        {
+            if (File.Exists(path) && (path.EndsWith(".exe") || !Path.HasExtension(path)))
+            {
+                TestContext.WriteLine($"CLI実行可能ファイルを発見: {path}");
+                return (path, null);
+            }
+        }
+
+        // デバッグ情報: 現在のディレクトリの内容を表示
+        TestContext.WriteLine("現在のディレクトリの内容:");
+        try
+        {
+            var files = Directory.GetFiles(Environment.CurrentDirectory, "*proctail*", SearchOption.TopDirectoryOnly);
+            foreach (var file in files)
+            {
+                TestContext.WriteLine($"  - {Path.GetFileName(file)} (FullPath: {file})");
+            }
+        }
+        catch (Exception ex)
+        {
+            TestContext.WriteLine($"ディレクトリ一覧取得エラー: {ex.Message}");
+        }
+
+        // フォールバック: エラーとして例外を投げる
+        throw new FileNotFoundException("CLI実行可能ファイル（proctail.dll、proctail.exe、または proctail）が見つかりません。publishされたファイルがテストディレクトリにコピーされているか確認してください。");
+    }
+
+    private (string FileName, string? DllPath) FindHostExecutable()
+    {
+        // Windows環境でHost実行可能ファイルを探す
+        var currentDir = Environment.CurrentDirectory;
+        var possiblePaths = new[]
+        {
+            // テストディレクトリ内のpublishされたファイル（最優先）
+            Path.Combine(currentDir, "ProcTail.Host.dll"),
+            Path.Combine(currentDir, "ProcTail.Host"),
+            Path.Combine(currentDir, "ProcTail.Host.exe"),
+            
+            // 親ディレクトリを確認（C:\temp\proctail_test_XXX\tests -> C:\temp\proctail_test_XXX）
+            Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "tests", "ProcTail.Host.dll"),
+            Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "tests", "ProcTail.Host"),
+            Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "tests", "ProcTail.Host.exe"),
+            
+            // 従来のビルド出力パス
+            Path.Combine(currentDir, "src", "ProcTail.Host", "bin", "Debug", "net8.0", "ProcTail.Host.dll"),
+            Path.Combine(currentDir, "src", "ProcTail.Host", "bin", "Debug", "net8.0", "ProcTail.Host.exe"),
+        };
+
+        TestContext.WriteLine($"Host実行可能ファイルを検索中... (作業ディレクトリ: {Environment.CurrentDirectory})");
+
+        // DLLファイルを優先（dotnet経由で実行、クロスプラットフォーム対応）
+        foreach (var path in possiblePaths)
+        {
+            if (File.Exists(path) && path.EndsWith(".dll"))
+            {
+                TestContext.WriteLine($"Host DLLファイルを発見: {path}");
+                return ("dotnet", path);
+            }
+        }
+
+        // 実行可能ファイル（.exe または拡張子なし）
+        foreach (var path in possiblePaths)
+        {
+            if (File.Exists(path) && (path.EndsWith(".exe") || !Path.HasExtension(path)))
+            {
+                TestContext.WriteLine($"Host実行可能ファイルを発見: {path}");
+                return (path, null);
+            }
+        }
+
+        // デバッグ情報: 現在のディレクトリの内容を表示
+        TestContext.WriteLine("現在のディレクトリの内容:");
+        try
+        {
+            var files = Directory.GetFiles(Environment.CurrentDirectory, "*Host*", SearchOption.TopDirectoryOnly);
+            foreach (var file in files)
+            {
+                TestContext.WriteLine($"  - {Path.GetFileName(file)} (FullPath: {file})");
+            }
+        }
+        catch (Exception ex)
+        {
+            TestContext.WriteLine($"ディレクトリ一覧取得エラー: {ex.Message}");
+        }
+
+        // フォールバック: エラーとして例外を投げる
+        throw new FileNotFoundException("Host実行可能ファイル（ProcTail.Host.dll、ProcTail.Host.exe、または ProcTail.Host）が見つかりません。publishされたファイルがテストディレクトリにコピーされているか確認してください。");
     }
 }

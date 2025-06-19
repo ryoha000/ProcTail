@@ -99,12 +99,12 @@ public class EndToEndTests
         _mockEtwProvider.IsMonitoring.Should().BeTrue();
 
         // 3. テストイベントを生成・送信
+        // Process/Endイベントは子プロセスの監視確認後に送信するため、ここでは送信しない
         var testEvents = new[]
         {
             CreateTestFileEvent(processId, @"C:\test1.txt"),
             CreateTestFileEvent(processId, @"C:\test2.txt"),
-            CreateTestProcessStartEvent(processId, 5678, "child.exe"),
-            CreateTestProcessEndEvent(5678)
+            CreateTestProcessStartEvent(processId, 5678, "child.exe")
         };
 
         foreach (var testEvent in testEvents)
@@ -112,8 +112,8 @@ public class EndToEndTests
             _mockEtwProvider.TriggerEvent(testEvent);
         }
 
-        // イベント処理の完了を待機
-        await Task.Delay(100);
+        // イベント処理の完了を待機（子プロセスの追加は非同期で実行されるため、より長い待機時間が必要）
+        await Task.Delay(500);
 
         // 4. 記録されたイベントを検証
         receivedEvents.Should().HaveCountGreaterThan(0);
@@ -138,13 +138,26 @@ public class EndToEndTests
         _watchTargetManager.IsWatchedProcess(5678).Should().BeTrue();
         _watchTargetManager.GetTagForProcess(5678).Should().Be(tagName);
 
-        // 5. 統計情報を検証
+        // 5. Process/Endイベントを送信して、プロセス終了も正しく処理されることを確認
+        _mockEtwProvider.TriggerEvent(CreateTestProcessEndEvent(5678));
+        await Task.Delay(100);
+
+        // プロセス終了イベントの検証
+        var allEvents = await _eventStorage.GetEventsAsync(tagName);
+        var processEndEvents = allEvents.OfType<ProcessEndEventData>().ToList();
+        processEndEvents.Should().HaveCount(1);
+        processEndEvents[0].ProcessId.Should().Be(5678);
+
+        // プロセス終了後は監視対象から除去される
+        _watchTargetManager.IsWatchedProcess(5678).Should().BeFalse();
+
+        // 6. 統計情報を検証
         var statistics = await _eventStorage.GetStatisticsAsync();
         statistics.TotalTags.Should().BeGreaterThan(0);
         statistics.TotalEvents.Should().BeGreaterThan(0);
         statistics.EventCountByTag.Should().ContainKey(tagName);
 
-        // 6. ETW監視を停止
+        // 7. ETW監視を停止
         await _mockEtwProvider.StopMonitoringAsync();
         _mockEtwProvider.IsMonitoring.Should().BeFalse();
     }

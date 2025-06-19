@@ -15,7 +15,7 @@ public class NamedPipeConfiguration : INamedPipeConfiguration
     /// <summary>
     /// パイプ名
     /// </summary>
-    public string PipeName { get; private set; }
+    public string PipeName { get; private set; } = null!;
 
     /// <summary>
     /// 最大同時接続数
@@ -40,23 +40,21 @@ public class NamedPipeConfiguration : INamedPipeConfiguration
     /// <summary>
     /// セキュリティ設定
     /// </summary>
-    public NamedPipeSecurityOptions SecurityOptions { get; private set; }
+    public NamedPipeSecurityOptions SecurityOptions { get; private set; } = null!;
 
     /// <summary>
     /// パフォーマンス設定
     /// </summary>
-    public NamedPipePerformanceOptions PerformanceOptions { get; private set; }
+    public NamedPipePerformanceOptions PerformanceOptions { get; private set; } = null!;
 
     /// <summary>
     /// パラメーターレスコンストラクタ（デフォルト設定用）
     /// </summary>
     public NamedPipeConfiguration()
     {
-        PipeName = "ProcTailIPC";
-        SecurityOptions = new NamedPipeSecurityOptions();
-        PerformanceOptions = new NamedPipePerformanceOptions();
         _logger = null!;
         _configuration = null!;
+        LoadDefaultConfiguration();
     }
 
     /// <summary>
@@ -69,10 +67,10 @@ public class NamedPipeConfiguration : INamedPipeConfiguration
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
         
-        PipeName = "ProcTailIPC";
-        SecurityOptions = new NamedPipeSecurityOptions();
-        PerformanceOptions = new NamedPipePerformanceOptions();
-
+        // デフォルト設定を先に読み込む
+        LoadDefaultConfiguration();
+        
+        // その後、設定ファイルから読み込み（上書き）
         LoadConfiguration();
     }
 

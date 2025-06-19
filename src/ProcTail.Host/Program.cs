@@ -11,7 +11,6 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Security.Principal;
-using Serilog;
 using MSConfiguration = Microsoft.Extensions.Configuration;
 
 namespace ProcTail.Host;
@@ -28,78 +27,49 @@ public class Program
     /// <returns>非同期タスク</returns>
     public static async Task Main(string[] args)
     {
-        // 早期ログ設定（Serilog初期化前）
+        // 早期ログ設定（Console出力のみ）
         var logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
         Directory.CreateDirectory(logDirectory);
-        
-        var bootstrapLogger = new LoggerConfiguration()
-            .WriteTo.Console()
-            .WriteTo.File(Path.Combine(logDirectory, "bootstrap-.log"), rollingInterval: RollingInterval.Day)
-            .CreateLogger();
-        
-        Log.Logger = bootstrapLogger;
 
         try
         {
-            Log.Information("=== ProcTail Host Starting ===");
-            Log.Information("Arguments: {Args}", string.Join(" ", args));
-            Log.Information("Working Directory: {WorkingDirectory}", Environment.CurrentDirectory);
-            Log.Information("Process Path: {ProcessPath}", Environment.ProcessPath);
-            Log.Information("UserInteractive: {UserInteractive}", Environment.UserInteractive);
-
             // Windows環境チェック
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                Log.Error("このアプリケーションはWindows環境でのみ動作します");
                 Console.WriteLine("このアプリケーションはWindows環境でのみ動作します。");
                 Environment.Exit(1);
                 return;
             }
-            Log.Information("Windows環境が確認されました");
 
             // 管理者権限チェック
             if (!IsRunningAsAdministrator())
             {
-                Log.Warning("管理者権限が必要です");
                 Console.WriteLine("このアプリケーションは管理者権限が必要です。");
                 
                 // UACプロンプトによる権限昇格を試行
                 if (args.Length == 0 || !args.Contains("--no-uac"))
                 {
-                    Log.Information("UACプロンプトによる権限昇格を試行します");
+                    Console.WriteLine("UACプロンプトによる権限昇格を試行します");
                     await RequestAdministratorPrivilegesAsync(args);
                     return;
                 }
                 else
                 {
-                    Log.Error("管理者権限なしでは実行できません");
                     Console.WriteLine("管理者権限なしでは実行できません。");
                     Environment.Exit(1);
                     return;
                 }
             }
 
-            Log.Information("管理者権限で実行中です");
-            Console.WriteLine("管理者権限で実行中です。");
-            
-            Log.Information("HostBuilderを作成中...");
+            // ホストビルダーを作成して実行
             var host = CreateHostBuilder(args).Build();
-            
-            Log.Information("ホストを開始中...");
-            // サービスとして実行
             await host.RunAsync();
         }
         catch (Exception ex)
         {
-            Log.Fatal(ex, "アプリケーション開始中に致命的エラーが発生しました");
             Console.WriteLine($"アプリケーション開始中にエラーが発生しました: {ex.Message}");
             Console.WriteLine($"詳細: {ex}");
             Environment.Exit(1);
-        }
-        finally
-        {
-            Log.Information("=== ProcTail Host Stopping ===");
-            Log.CloseAndFlush();
         }
     }
 
@@ -124,34 +94,12 @@ public class Program
         }
 
         return builder
-            .UseSerilog((context, services, configuration) =>
-            {
-                // ログディレクトリを作成
-                var logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
-                Directory.CreateDirectory(logDirectory);
-                
-                configuration
-                    .MinimumLevel.Debug()
-                    .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
-                    .MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Warning)
-                    .Enrich.FromLogContext()
-                    .Enrich.WithProcessId()
-                    .Enrich.WithThreadId()
-                    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
-                    .WriteTo.File(
-                        path: Path.Combine(logDirectory, "proctail-.log"),
-                        rollingInterval: RollingInterval.Day,
-                        retainedFileCountLimit: 7,
-                        outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}")
-                    .WriteTo.EventLog(
-                        source: "ProcTail",
-                        logName: "Application",
-                        restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Warning);
-            })
             .ConfigureLogging((context, logging) =>
             {
-                // Serilogを使用するため、他のプロバイダーをクリア
+                // デフォルトロギングを使用
                 logging.ClearProviders();
+                logging.AddConsole();
+                logging.SetMinimumLevel(LogLevel.Information);
             })
             .ConfigureServices((context, services) =>
             {
@@ -164,12 +112,18 @@ public class Program
     /// </summary>
     private static void ConfigureServices(IServiceCollection services, MSConfiguration.IConfiguration configuration)
     {
-        // 設定管理
-        services.AddSingleton<Core.Interfaces.IConfigurationManager, Infrastructure.Configuration.ConfigurationManager>();
+        // 設定を直接提供（ConfigurationManagerをバイパス）
         services.AddSingleton<IEtwConfiguration>(provider => 
-            provider.GetRequiredService<Core.Interfaces.IConfigurationManager>().GetConfiguration<EtwConfiguration>());
+        {
+            var logger = provider.GetRequiredService<ILogger<EtwConfiguration>>();
+            return new EtwConfiguration(logger, configuration);
+        });
+        
         services.AddSingleton<INamedPipeConfiguration>(provider => 
-            provider.GetRequiredService<Core.Interfaces.IConfigurationManager>().GetConfiguration<NamedPipeConfiguration>());
+        {
+            var logger = provider.GetRequiredService<ILogger<NamedPipeConfiguration>>();
+            return new NamedPipeConfiguration(logger, configuration);
+        });
 
         // インフラストラクチャ層
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -179,7 +133,6 @@ public class Program
         }
         else
         {
-            // 非Windowsプラットフォーム用のスタブ実装
             throw new PlatformNotSupportedException("このアプリケーションはWindows専用です。");
         }
 
@@ -189,9 +142,6 @@ public class Program
         services.AddSingleton<IEventStorage>(provider => 
         {
             var logger = provider.GetRequiredService<ILogger<EventStorage>>();
-            var configManager = provider.GetRequiredService<Core.Interfaces.IConfigurationManager>();
-            
-            // 設定から最大イベント数を取得
             var maxEvents = configuration.GetValue<int>("ProcTail:MaxEventsPerTag", 1000);
             return new EventStorage(logger, maxEvents);
         });

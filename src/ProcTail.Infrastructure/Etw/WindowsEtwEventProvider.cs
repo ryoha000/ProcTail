@@ -83,6 +83,17 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             
             _logger.LogInformation("管理者権限が確認されました");
 
+            // 軽量クリーンアップを実行
+            try
+            {
+                _logger.LogDebug("ETWリソース軽量クリーンアップを実行中...");
+                CleanupProcTailSessions(); // ProcTail関連のみ
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogWarning(cleanupEx, "軽量クリーンアップ中に警告が発生しました");
+            }
+
             // ETWセッションを作成
             await CreateEtwSessionsAsync(cancellationToken);
 
@@ -95,8 +106,20 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "ETW監視開始中にエラーが発生しました");
-            await StopMonitoringAsync(cancellationToken);
-            throw;
+            
+            // 失敗時はサービスを停止せずにエラー状態で継続
+            try
+            {
+                _logger.LogInformation("失敗時の軽量クリーンアップを実行中...");
+                CleanupProcTailSessions(); // 軽量なクリーンアップのみ
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogWarning(cleanupEx, "クリーンアップ中にエラーが発生しました");
+            }
+            
+            _logger.LogWarning("ETW監視の開始に失敗しましたが、サービスは継続します");
+            // throw を削除してサービス継続
         }
     }
 
@@ -158,6 +181,17 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                 }
             }
 
+            // 停止時の追加クリーンアップ
+            try
+            {
+                _logger.LogDebug("停止時のETWクリーンアップを実行中...");
+                CleanupProcTailSessions(); // ProcTail関連のみクリーンアップ
+            }
+            catch (Exception cleanupEx)
+            {
+                _logger.LogDebug(cleanupEx, "停止時クリーンアップ中にエラーが発生しました");
+            }
+
             _isMonitoring = false;
             _logger.LogInformation("ETW監視が正常に停止されました");
         }
@@ -208,24 +242,27 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         {
             _logger.LogTrace("統合ETWセッションを作成中: {SessionName}", sessionName);
             
-            // まず既存のセッションをクリーンアップ
+            // 最小限のクリーンアップ
             try
             {
-                CleanupExistingEtwSessions();
+                // 同名セッションがあれば停止
+                using var tempSession = TraceEventSession.GetActiveSession(sessionName);
+                tempSession?.Stop();
             }
-            catch (Exception cleanupEx)
+            catch
             {
-                _logger.LogWarning(cleanupEx, "既存ETWセッションクリーンアップ中に警告が発生しました");
+                // 既存セッションがない場合は正常
             }
             
             var session = new TraceEventSession(sessionName);
             
-            // より限定的なキーワードで開始（リソース消費を削減）
-            _logger.LogTrace("軽量カーネルプロバイダーを有効化中...");
+            // リソース制約対応：FileIOとProcessを有効にするが、Readは除外してリソース消費を削減
+            _logger.LogTrace("最軽量ファイル監視を有効化中...");
             session.EnableKernelProvider(
-                KernelTraceEventParser.Keywords.Process);  // まずProcessのみ
+                KernelTraceEventParser.Keywords.FileIOInit | 
+                KernelTraceEventParser.Keywords.Process);  // FileIOInitとProcessでReadを除外
             
-            _logger.LogInformation("カーネルプロバイダーを有効にしました (Process)");
+            _logger.LogInformation("カーネルプロバイダーを有効にしました (FileIOInit + Process)");
             
             // イベントハンドラーを設定
             SetupKernelEventHandlers(session);
@@ -263,41 +300,196 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
     {
         try
         {
-            _logger.LogDebug("既存のProcTail ETWセッションをクリーンアップ中...");
+            _logger.LogInformation("ETWセッションの包括的クリーンアップを開始します...");
             
-            // Process.Startを使ってlogman経由でセッションを停止
-            var cleanupCommands = new[]
-            {
-                "logman stop \"ProcTail*\" -ets",
-                "logman stop \"PT_*\" -ets"
-            };
+            // Step 1: ProcTail関連セッションを停止
+            CleanupProcTailSessions();
             
-            foreach (var command in cleanupCommands)
-            {
-                try
-                {
-                    using var process = new System.Diagnostics.Process();
-                    process.StartInfo.FileName = "cmd.exe";
-                    process.StartInfo.Arguments = $"/c {command} 2>nul";
-                    process.StartInfo.UseShellExecute = false;
-                    process.StartInfo.CreateNoWindow = true;
-                    process.Start();
-                    process.WaitForExit(2000); // 2秒でタイムアウト
-                }
-                catch
-                {
-                    // クリーンアップのエラーは無視
-                }
-            }
+            // Step 2: 孤立したETWセッションを検出・停止
+            CleanupOrphanedSessions();
             
-            // 少し待機してからセッション作成
+            // Step 3: システムETWリソースの解放
+            ForceReleaseEtwResources();
+            
+            // Step 4: 短縮された安定化待機
+            _logger.LogDebug("ETWリソース安定化のため待機中...");
             Thread.Sleep(1000);
             
-            _logger.LogDebug("ETWセッションクリーンアップが完了しました");
+            _logger.LogInformation("ETWセッション包括的クリーンアップが完了しました");
         }
         catch (Exception ex)
         {
-            _logger.LogDebug(ex, "ETWセッションクリーンアップ中にエラーが発生しました");
+            _logger.LogWarning(ex, "ETWセッションクリーンアップ中に警告が発生しました");
+        }
+    }
+
+    /// <summary>
+    /// ProcTail関連セッションをクリーンアップ
+    /// </summary>
+    private void CleanupProcTailSessions()
+    {
+        _logger.LogDebug("ProcTail関連ETWセッションをクリーンアップ中...");
+        
+        var patterns = new[]
+        {
+            "ProcTail*",
+            "PT_*",
+            "*ProcTail*",
+            $"ProcTail_{Environment.ProcessId}_*",
+            $"PT_FileIO_{Environment.ProcessId}",
+            $"PT_Process_{Environment.ProcessId}"
+        };
+        
+        foreach (var pattern in patterns)
+        {
+            ExecuteCleanupCommand($"logman stop \"{pattern}\" -ets", $"Pattern: {pattern}");
+        }
+    }
+
+    /// <summary>
+    /// 孤立したETWセッションを検出・停止
+    /// </summary>
+    private void CleanupOrphanedSessions()
+    {
+        try
+        {
+            _logger.LogDebug("孤立ETWセッションを検出中...");
+            
+            // 現在のETWセッション一覧を取得
+            var sessionList = GetActiveEtwSessions();
+            var orphanedSessions = sessionList.Where(session => 
+                session.Contains("ProcTail") || 
+                session.Contains("PT_") ||
+                session.StartsWith("TraceEventSession")).ToList();
+            
+            foreach (var session in orphanedSessions)
+            {
+                _logger.LogDebug("孤立セッションを停止中: {Session}", session);
+                ExecuteCleanupCommand($"logman stop \"{session}\" -ets", $"Orphaned: {session}");
+            }
+            
+            if (orphanedSessions.Any())
+            {
+                _logger.LogInformation("孤立ETWセッション {Count} 個をクリーンアップしました", orphanedSessions.Count);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "孤立セッション検出中にエラーが発生しました");
+        }
+    }
+
+    /// <summary>
+    /// 現在のアクティブETWセッション一覧を取得
+    /// </summary>
+    private List<string> GetActiveEtwSessions()
+    {
+        var sessions = new List<string>();
+        
+        try
+        {
+            using var process = new System.Diagnostics.Process();
+            process.StartInfo.FileName = "logman";
+            process.StartInfo.Arguments = "query -ets";
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.CreateNoWindow = true;
+            process.Start();
+            
+            var output = process.StandardOutput.ReadToEnd();
+            process.WaitForExit(5000);
+            
+            var lines = output.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                // セッション名を抽出（最初の列）
+                var parts = line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 0 && !parts[0].Contains("---") && !parts[0].Contains("データ"))
+                {
+                    sessions.Add(parts[0].Trim());
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "ETWセッション一覧の取得に失敗しました");
+        }
+        
+        return sessions;
+    }
+
+    /// <summary>
+    /// システムETWリソースの強制解放
+    /// </summary>
+    private void ForceReleaseEtwResources()
+    {
+        _logger.LogDebug("システムETWリソースを強制解放中...");
+        
+        var systemCommands = new[]
+        {
+            "logman stop \"Kernel Logger\" -ets",
+            "logman stop \"NT Kernel Logger\" -ets",
+            "logman stop \"Circular Kernel Context Logger\" -ets",
+            "wevtutil sl Microsoft-Windows-Kernel-Process/Analytic /e:false",
+            "wevtutil sl Microsoft-Windows-Kernel-FileIO/Analytic /e:false"
+        };
+        
+        foreach (var command in systemCommands)
+        {
+            ExecuteCleanupCommand(command, "System ETW");
+        }
+        
+        // 追加: Windows Event Logサービスの軽いリフレッシュ
+        try
+        {
+            ExecuteCleanupCommand("net stop EventLog /y && net start EventLog", "EventLog Service");
+        }
+        catch
+        {
+            _logger.LogDebug("EventLogサービスのリフレッシュは管理者権限が必要でした");
+        }
+    }
+
+    /// <summary>
+    /// クリーンアップコマンドを実行
+    /// </summary>
+    private void ExecuteCleanupCommand(string command, string description)
+    {
+        try
+        {
+            using var process = new System.Diagnostics.Process();
+            process.StartInfo.FileName = "cmd.exe";
+            process.StartInfo.Arguments = $"/c {command} 2>nul";
+            process.StartInfo.UseShellExecute = false;
+            process.StartInfo.CreateNoWindow = true;
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+            
+            process.Start();
+            
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+            
+            if (process.WaitForExit(3000))
+            {
+                if (process.ExitCode == 0)
+                {
+                    _logger.LogTrace("クリーンアップ成功: {Description}", description);
+                }
+                else
+                {
+                    _logger.LogTrace("クリーンアップ試行: {Description} (ExitCode: {ExitCode})", description, process.ExitCode);
+                }
+            }
+            else
+            {
+                process.Kill();
+                _logger.LogTrace("クリーンアップタイムアウト: {Description}", description);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogTrace(ex, "クリーンアップエラー: {Description}", description);
         }
     }
 
@@ -538,8 +730,8 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _logger.LogTrace("未処理イベントを受信: {ProviderName}.{EventName}, ProcessId: {ProcessId}", 
                 data.ProviderName, data.EventName, data.ProcessID);
 
-            // 設定で有効になっているイベントのみ処理
-            if (!_configuration.EnabledEventNames.Contains(data.EventName))
+            // 設定で有効になっているイベントのみ処理（設定が空の場合はすべて通す）
+            if (_configuration.EnabledEventNames.Count > 0 && !_configuration.EnabledEventNames.Contains(data.EventName))
             {
                 _logger.LogTrace("イベントはフィルタリングされました: {EventName} (有効なイベント一覧にない)", data.EventName);
                 return;

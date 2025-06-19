@@ -120,16 +120,33 @@ public class WindowsNamedPipeServerTests
         await client.ConnectAsync(5000);
         client.IsConnected.Should().BeTrue();
 
-        // Send test request
+        // Send test request with length prefix
         var testRequest = @"{""RequestType"": ""GetStatus""}";
         var requestBytes = Encoding.UTF8.GetBytes(testRequest);
+        var lengthBytes = BitConverter.GetBytes(requestBytes.Length);
+        
+        // Send length first, then the message
+        await client.WriteAsync(lengthBytes);
         await client.WriteAsync(requestBytes);
         await client.FlushAsync();
 
-        // Read response
-        var responseBuffer = new byte[4096];
-        var bytesRead = await client.ReadAsync(responseBuffer);
-        var response = Encoding.UTF8.GetString(responseBuffer, 0, bytesRead);
+        // Read response with length prefix
+        var lengthBuffer = new byte[4];
+        var lengthBytesRead = await client.ReadAsync(lengthBuffer);
+        lengthBytesRead.Should().Be(4, "Should read 4 bytes for message length");
+        
+        var responseLength = BitConverter.ToInt32(lengthBuffer, 0);
+        var responseBuffer = new byte[responseLength];
+        var responseBytesRead = 0;
+        
+        while (responseBytesRead < responseLength)
+        {
+            var read = await client.ReadAsync(responseBuffer, responseBytesRead, responseLength - responseBytesRead);
+            if (read == 0) break;
+            responseBytesRead += read;
+        }
+        
+        var response = Encoding.UTF8.GetString(responseBuffer, 0, responseBytesRead);
 
         // Assert
         receivedRequest.Should().Be(testRequest);
@@ -172,12 +189,28 @@ public class WindowsNamedPipeServerTests
                 
                 var request = $@"{{""RequestType"": ""Test"", ""ClientId"": {i}}}";
                 var requestBytes = Encoding.UTF8.GetBytes(request);
+                var lengthBytes = BitConverter.GetBytes(requestBytes.Length);
+                
+                // Send length first, then the message
+                await client.WriteAsync(lengthBytes);
                 await client.WriteAsync(requestBytes);
                 await client.FlushAsync();
 
-                var responseBuffer = new byte[4096];
-                var bytesRead = await client.ReadAsync(responseBuffer);
-                var response = Encoding.UTF8.GetString(responseBuffer, 0, bytesRead);
+                // Read response with length prefix
+                var lengthBuffer = new byte[4];
+                var lengthBytesRead = await client.ReadAsync(lengthBuffer);
+                var responseLength = BitConverter.ToInt32(lengthBuffer, 0);
+                var responseBuffer = new byte[responseLength];
+                var responseBytesRead = 0;
+                
+                while (responseBytesRead < responseLength)
+                {
+                    var read = await client.ReadAsync(responseBuffer, responseBytesRead, responseLength - responseBytesRead);
+                    if (read == 0) break;
+                    responseBytesRead += read;
+                }
+                
+                var response = Encoding.UTF8.GetString(responseBuffer, 0, responseBytesRead);
                 
                 response.Should().Contain(@"""Success"": true");
             }));
@@ -266,6 +299,10 @@ public class WindowsNamedPipeServerTests
         
         var request = @"{""RequestType"": ""SlowOperation""}";
         var requestBytes = Encoding.UTF8.GetBytes(request);
+        var lengthBytes = BitConverter.GetBytes(requestBytes.Length);
+        
+        // Send length first, then the message
+        await client.WriteAsync(lengthBytes);
         await client.WriteAsync(requestBytes);
         await client.FlushAsync();
 
