@@ -1,0 +1,41 @@
+# Start CLI and subscribe to notepad process
+# CLIを起動してnotepadプロセスを購読
+
+param(
+    [Parameter(Mandatory=$true)]
+    [int]$NotepadPid,
+    [string]$CliPath = "..\..\publish\cli\proctail.exe",
+    [string]$Tag = "test-notepad"
+)
+
+Write-Host "Starting ProcTail CLI and subscribing to notepad (PID: $NotepadPid)..." -ForegroundColor Yellow
+
+# Resolve full path to CLI executable
+$fullCliPath = Resolve-Path $CliPath -ErrorAction SilentlyContinue
+if (-not $fullCliPath) {
+    Write-Host "Could not find ProcTail CLI at: $CliPath" -ForegroundColor Red
+    Write-Host "Please ensure the application has been built and published." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "Using CLI from: $fullCliPath" -ForegroundColor Cyan
+
+# Add watch target for notepad process
+Write-Host "Adding watch target for notepad PID $NotepadPid with tag '$Tag'..." -ForegroundColor Cyan
+
+try {
+    $addResult = & $fullCliPath add-watch-target --pid $NotepadPid --tag $Tag 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        Write-Host "Successfully added watch target for notepad!" -ForegroundColor Green
+        Write-Host $addResult
+    } else {
+        Write-Host "Failed to add watch target: $addResult" -ForegroundColor Red
+        exit 1
+    }
+}
+catch {
+    Write-Host "Error running CLI add-watch-target command: $_" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "CLI subscription completed successfully!" -ForegroundColor Green
