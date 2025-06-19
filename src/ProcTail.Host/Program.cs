@@ -90,6 +90,7 @@ public class Program
             Log.Information("Creating host builder...");
             var host = CreateHostBuilder(args).Build();
             
+            Log.Information("Host built successfully");
             Log.Information("Starting host...");
             await host.RunAsync();
         }
@@ -127,7 +128,7 @@ public class Program
         }
 
         return builder
-            .UseSerilog() // Use Serilog instead of default logging
+            .UseSerilog()
             .ConfigureLogging((context, logging) =>
             {
                 // Clear default providers since we're using Serilog

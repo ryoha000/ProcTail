@@ -1,0 +1,20 @@
+=== TRACE LOG CONTENT ===
+ProcTail.Host.exe : Tracing enabled @ Thu Jun 19 19:25:12 2025 GMT
+”­¶êŠ \\wsl.localhost\Ubuntu\home\ryoha\workspace\proctail\scripts\windows-test\trace-host-startup.ps1:77 •¶Žš:5
++     & $hostPath 2>&1 | Tee-Object -FilePath $traceLog
++     ~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Tracing enabled...:25:12 2025 GMT:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+--- Invoked apphost [version: 8.0.17 @Commit: 77545d6fd5ca79bc08198fd6d8037c14843f14ad] main = {
+\\wsl.localhost\Ubuntu\home\ryoha\workspace\proctail\publish\host\ProcTail.Host.exe
+}
+Redirecting errors to custom writer.
+The managed DLL bound to this executable is: 'ProcTail.Host.dll'
+Resolved fxr [\\wsl.localhost\Ubuntu\home\ryoha\workspace\proctail\publish\host\hostfxr.dll]...
+
+=== ERROR ANALYSIS ===
+Found errors:
+    + CategoryInfo          : NotSpecified: (Tracing enabled...:25:12 2025 GMT:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+Redirecting errors to custom writer.
