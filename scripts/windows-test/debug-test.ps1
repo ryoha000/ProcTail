@@ -85,8 +85,10 @@ try {
 
     # Step 2: Start Host
     Write-Log "Step 2: Starting ProcTail Host..." "INFO"
-    $hostPath = Join-Path $scriptDir "..\..\publish\host\ProcTail.Host.exe"
-    $resolvedHostPath = Resolve-Path $hostPath -ErrorAction SilentlyContinue
+    $projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
+    $hostPath = Join-Path $projectRoot "publish\host\ProcTail.Host.exe"
+    Write-Log "Looking for Host at: $hostPath" "INFO"
+    $resolvedHostPath = if (Test-Path $hostPath) { $hostPath } else { $null }
     
     if (-not $resolvedHostPath) {
         Write-Log "ERROR: Could not find ProcTail Host at: $hostPath" "ERROR"
@@ -151,8 +153,9 @@ try {
 
     # Step 4: Start CLI and subscribe
     Write-Log "Step 4: Starting CLI and subscribing to Notepad (PID: $notepadPid)..." "INFO"
-    $cliPath = Join-Path $scriptDir "..\..\publish\cli\proctail.exe"
-    $resolvedCliPath = Resolve-Path $cliPath -ErrorAction SilentlyContinue
+    $cliPath = Join-Path $projectRoot "publish\cli\proctail.exe"
+    Write-Log "Looking for CLI at: $cliPath" "INFO"
+    $resolvedCliPath = if (Test-Path $cliPath) { $cliPath } else { $null }
     
     if (-not $resolvedCliPath) {
         Write-Log "ERROR: Could not find ProcTail CLI at: $cliPath" "ERROR"

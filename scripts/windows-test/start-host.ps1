@@ -2,8 +2,15 @@
 # ProcTail Host を起動
 
 param(
-    [string]$HostPath = "..\..\publish\host\ProcTail.Host.exe"
+    [string]$HostPath = ""
 )
+
+# Calculate absolute path if not provided
+if (-not $HostPath) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
+    $HostPath = Join-Path $projectRoot "publish\host\ProcTail.Host.exe"
+}
 
 Write-Host "Starting ProcTail Host..." -ForegroundColor Yellow
 
@@ -15,7 +22,8 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 }
 
 # Resolve full path to Host executable
-$fullHostPath = Resolve-Path $HostPath -ErrorAction SilentlyContinue
+Write-Host "Looking for Host at: $HostPath" -ForegroundColor Gray
+$fullHostPath = if (Test-Path $HostPath) { $HostPath } else { $null }
 if (-not $fullHostPath) {
     Write-Host "Could not find ProcTail Host at: $HostPath" -ForegroundColor Red
     Write-Host "Please ensure the application has been built and published." -ForegroundColor Red

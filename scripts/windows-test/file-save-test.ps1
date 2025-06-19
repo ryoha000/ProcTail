@@ -2,15 +2,23 @@
 # ファイル保存操作をテストしてイベントを確認
 
 param(
-    [string]$CliPath = "..\..\publish\cli\proctail.exe",
+    [string]$CliPath = "",
     [string]$Tag = "test-notepad",
     [string]$TestFile = "$env:TEMP\proctail-test.txt"
 )
 
+# Calculate absolute path if not provided
+if (-not $CliPath) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+    $projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
+    $CliPath = Join-Path $projectRoot "publish\cli\proctail.exe"
+}
+
 Write-Host "Testing file save operations and event verification..." -ForegroundColor Yellow
 
 # Resolve full path to CLI executable
-$fullCliPath = Resolve-Path $CliPath -ErrorAction SilentlyContinue
+Write-Host "Looking for CLI at: $CliPath" -ForegroundColor Gray
+$fullCliPath = if (Test-Path $CliPath) { $CliPath } else { $null }
 if (-not $fullCliPath) {
     Write-Host "Could not find ProcTail CLI at: $CliPath" -ForegroundColor Red
     exit 1
