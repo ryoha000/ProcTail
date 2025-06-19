@@ -70,7 +70,7 @@ Start-Sleep -Seconds 2
 Write-Host "Retrieving events for tag '$Tag'..." -ForegroundColor Cyan
 
 try {
-    $eventsResult = & $fullCliPath get-events --tag $Tag 2>&1
+    $eventsResult = & $fullCliPath events --tag $Tag 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Events retrieved successfully!" -ForegroundColor Green
         Write-Host "=== EVENT DATA ===" -ForegroundColor Yellow

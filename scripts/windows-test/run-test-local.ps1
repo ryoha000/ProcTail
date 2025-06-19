@@ -97,7 +97,7 @@ try {
     # Step 5: Subscribe to notepad
     Write-Host "`nStep 5: Subscribing to Notepad with CLI..." -ForegroundColor Yellow
     
-    $addResult = & $localCliPath add-watch-target --pid $notepadPid --tag $Tag 2>&1
+    $addResult = & $localCliPath add --pid $notepadPid --tag $Tag 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✓ Successfully subscribed to Notepad!" -ForegroundColor Green
     } else {
@@ -139,7 +139,7 @@ try {
     Write-Host "`nStep 7: Retrieving events..." -ForegroundColor Yellow
     Start-Sleep -Seconds 2
     
-    $eventsResult = & $localCliPath get-events --tag $Tag 2>&1
+    $eventsResult = & $localCliPath events --tag $Tag 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "✓ Events retrieved successfully!" -ForegroundColor Green
         Write-Host "`n=== EVENT DATA ===" -ForegroundColor Yellow

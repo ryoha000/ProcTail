@@ -166,7 +166,7 @@ try {
     
     try {
         Write-Log "Executing: $resolvedCliPath add-watch-target --pid $notepadPid --tag $Tag" "INFO"
-        $addResult = & $resolvedCliPath add-watch-target --pid $notepadPid --tag $Tag 2>&1
+        $addResult = & $resolvedCliPath add --pid $notepadPid --tag $Tag 2>&1
         
         Write-Log "CLI add-watch-target exit code: $LASTEXITCODE" "INFO"
         Write-Log "CLI add-watch-target output: $addResult" "INFO"
@@ -198,7 +198,7 @@ try {
     
     try {
         Write-Log "Executing: $resolvedCliPath get-events --tag $Tag" "INFO"
-        $eventsResult = & $resolvedCliPath get-events --tag $Tag 2>&1
+        $eventsResult = & $resolvedCliPath events --tag $Tag 2>&1
         
         Write-Log "CLI get-events exit code: $LASTEXITCODE" "INFO"
         Write-Log "CLI get-events output length: $($eventsResult.Length) characters" "INFO"

@@ -32,7 +32,7 @@ Write-Host "Using CLI from: $fullCliPath" -ForegroundColor Cyan
 Write-Host "Adding watch target for notepad PID $NotepadPid with tag '$Tag'..." -ForegroundColor Cyan
 
 try {
-    $addResult = & $fullCliPath add-watch-target --pid $NotepadPid --tag $Tag 2>&1
+    $addResult = & $fullCliPath add --pid $NotepadPid --tag $Tag 2>&1
     if ($LASTEXITCODE -eq 0) {
         Write-Host "Successfully added watch target for notepad!" -ForegroundColor Green
         Write-Host $addResult
