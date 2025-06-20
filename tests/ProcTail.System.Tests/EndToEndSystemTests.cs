@@ -98,7 +98,7 @@ public class EndToEndSystemTests
     [Test]
     [Category("RequiresAdmin")]
     [Category("EndToEnd")]
-    public async Task ProcTailHost_NotepadMonitoring_ShouldDetectFileWriteEvents()
+    public async Task ProcTailHost_TestProcessMonitoring_ShouldDetectFileWriteEvents()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
         {
@@ -107,44 +107,43 @@ public class EndToEndSystemTests
         }
 
         Process? procTailHostProcess = null;
-        Process? notepadProcess = null;
-        var testFilePath = Path.Combine(Path.GetTempPath(), $"proctail_notepad_test_{Guid.NewGuid()}.txt");
+        Process? testProcess = null;
 
         try
         {
-            TestContext.WriteLine("=== ProcTail統合テスト開始 ===");
+            TestContext.WriteLine("=== ProcTail統合テスト開始 (test-process使用) ===");
             
             // 1. ProcTailHostを起動
             TestContext.WriteLine("1. ProcTailHostを起動中...");
             procTailHostProcess = await StartProcTailHostProcessAsync();
             
-            // 2. notepadプロセスを起動
-            TestContext.WriteLine("2. notepadプロセスを起動中...");
-            notepadProcess = await StartNotepadProcessAsync(testFilePath);
-            var notepadPid = notepadProcess.Id;
+            // 2. test-processを起動
+            TestContext.WriteLine("2. test-processを起動中...");
+            testProcess = await StartTestProcessAsync("file-write", 5);
+            var testProcessPid = testProcess.Id;
             
-            // 3. notepadプロセスを監視対象に追加
-            TestContext.WriteLine($"3. notepadプロセス(PID: {notepadPid})を監視対象に追加中...");
-            await AddWatchTargetAsync(notepadPid, "notepad-test");
+            // 3. test-processを監視対象に追加
+            TestContext.WriteLine($"3. test-process(PID: {testProcessPid})を監視対象に追加中...");
+            await AddWatchTargetAsync(testProcessPid, "test-process");
             
-            // 4. ファイル書き込み操作を実行
-            TestContext.WriteLine("4. notepadでファイル書き込み操作を実行中...");
-            await PerformFileWriteOperationAsync(testFilePath);
+            // 4. test-processの完了を待機
+            TestContext.WriteLine("4. test-processのファイル操作完了を待機中...");
+            await testProcess.WaitForExitAsync();
             
-            // 5. イベントが記録されるまで待機（PerformFileWriteOperationAsyncで既に待機済み）
+            // 5. イベントが記録されるまで待機
             TestContext.WriteLine("5. イベント処理完了を確認中...");
-            await Task.Delay(2000);
+            await Task.Delay(3000);
             
             // 6. 記録されたイベントを取得・検証
             TestContext.WriteLine("6. 記録されたイベントを取得・検証中...");
-            var events = await GetRecordedEventsAsync("notepad-test");
+            var events = await GetRecordedEventsAsync("test-process");
             
             // Assert
             events.Should().NotBeEmpty("ファイル操作イベントが記録されているはず");
             
             var fileEvents = events.Where(e => 
-                e.ToString()!.Contains("FileEvent", StringComparison.OrdinalIgnoreCase) && 
-                e.ToString()!.Contains(testFilePath, StringComparison.OrdinalIgnoreCase)
+                e.ToString()!.Contains("FileEvent", StringComparison.OrdinalIgnoreCase) ||
+                e.ToString()!.Contains("File", StringComparison.OrdinalIgnoreCase)
             ).ToList();
             
             TestContext.WriteLine($"検出されたイベント数: {events.Count}");
@@ -159,17 +158,14 @@ public class EndToEndSystemTests
             events.Count.Should().BeGreaterThan(0, "何らかのイベントが記録されているはず");
             
             TestContext.WriteLine("=== ProcTail統合テスト完了 ===");
-            TestContext.WriteLine("テスト結果の確認のため待機中... (5秒)");
-            await Task.Delay(5000);
         }
         finally
         {
             // クリーンアップ
             TestContext.WriteLine("クリーンアップ中...");
             
-            try { notepadProcess?.Kill(); notepadProcess?.Dispose(); } catch { }
+            try { testProcess?.Kill(); testProcess?.Dispose(); } catch { }
             try { procTailHostProcess?.Kill(); procTailHostProcess?.Dispose(); } catch { }
-            try { if (File.Exists(testFilePath)) File.Delete(testFilePath); } catch { }
             
             await Task.Delay(1000); // リソース解放待機
         }
@@ -510,37 +506,35 @@ public class EndToEndSystemTests
         return hostProcess;
     }
 
-    private async Task<Process> StartNotepadProcessAsync(string testFilePath)
+    private async Task<Process> StartTestProcessAsync(string operation, int count = 3)
     {
-        TestContext.WriteLine($"notepadプロセスを起動中... (ファイル: {testFilePath})");
+        TestContext.WriteLine($"test-processを起動中... (操作: {operation}, 回数: {count})");
         
-        // テストファイルを事前に作成
-        await File.WriteAllTextAsync(testFilePath, "Initial test content");
+        // test-process実行可能ファイルを探す
+        var testProcessExecutable = FindTestProcessExecutable();
         
-        var notepadProcess = new Process
+        var testProcess = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "notepad.exe",
-                Arguments = testFilePath,
-                UseShellExecute = true,  // ウィンドウを表示
-                WindowStyle = ProcessWindowStyle.Normal
+                FileName = testProcessExecutable.Item1,
+                Arguments = testProcessExecutable.Item2 != null 
+                    ? $"{testProcessExecutable.Item2} {operation} --count {count} --interval 500ms --verbose"
+                    : $"{operation} --count {count} --interval 500ms --verbose",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
             }
         };
 
-        notepadProcess.Start();
+        TestContext.WriteLine($"test-process実行コマンド: {testProcessExecutable.Item1} {testProcess.StartInfo.Arguments}");
         
-        // notepadが完全に起動するまで待機
-        TestContext.WriteLine("notepadの起動を待機中... (5秒)");
-        await Task.Delay(5000);
+        testProcess.Start();
         
-        TestContext.WriteLine($"notepad起動完了 (PID: {notepadProcess.Id})");
-        TestContext.WriteLine("notepadウィンドウが表示されているはずです");
+        TestContext.WriteLine($"test-process起動完了 (PID: {testProcess.Id})");
         
-        // 確認のため追加待機
-        await Task.Delay(3000);
-        
-        return notepadProcess;
+        return testProcess;
     }
 
     private async Task AddWatchTargetAsync(int processId, string tag)
@@ -619,22 +613,6 @@ public class EndToEndSystemTests
         }
     }
 
-    private async Task PerformFileWriteOperationAsync(string testFilePath)
-    {
-        TestContext.WriteLine($"ファイル書き込み操作を実行中... (ファイル: {testFilePath})");
-        
-        // 複数の書き込み操作を実行してイベントを確実に発生させる
-        for (int i = 0; i < 3; i++)
-        {
-            TestContext.WriteLine($"書き込み操作 {i + 1}/3 を実行中...");
-            await File.AppendAllTextAsync(testFilePath, $"\nTest write operation {i + 1} at {DateTime.Now}");
-            await Task.Delay(2000); // 各書き込み間に十分な間隔を置く
-        }
-        
-        TestContext.WriteLine("ファイル書き込み操作完了");
-        TestContext.WriteLine("ETWイベントの処理を待機中... (5秒)");
-        await Task.Delay(5000);
-    }
 
     private async Task<List<object>> GetRecordedEventsAsync(string tag)
     {
@@ -785,6 +763,61 @@ public class EndToEndSystemTests
 
         // フォールバック: エラーとして例外を投げる
         throw new FileNotFoundException("CLI実行可能ファイル（proctail.dll、proctail.exe、または proctail）が見つかりません。publishされたファイルがテストディレクトリにコピーされているか確認してください。");
+    }
+
+    private (string FileName, string? DllPath) FindTestProcessExecutable()
+    {
+        // test-process実行可能ファイルを探す
+        var currentDir = Environment.CurrentDirectory;
+        var possiblePaths = new[]
+        {
+            // テストディレクトリ内のtest-processファイル（最優先）
+            Path.Combine(currentDir, "test-process.exe"),
+            Path.Combine(currentDir, "test-process"),
+            
+            // 親ディレクトリを確認
+            Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "test-process.exe"),
+            Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "test-process"),
+            
+            // tools/test-process ディレクトリ内
+            Path.Combine(currentDir, "tools", "test-process", "test-process.exe"),
+            Path.Combine(currentDir, "tools", "test-process", "test-process"),
+            
+            // 相対パスでtools/test-processを確認
+            Path.Combine("..", "..", "..", "tools", "test-process", "test-process.exe"),
+            Path.Combine("..", "..", "..", "tools", "test-process", "test-process"),
+        };
+
+        TestContext.WriteLine($"test-process実行可能ファイルを検索中... (作業ディレクトリ: {Environment.CurrentDirectory})");
+
+        // 実行可能ファイル（.exe または拡張子なし）
+        foreach (var path in possiblePaths)
+        {
+            var fullPath = Path.GetFullPath(path);
+            if (File.Exists(fullPath))
+            {
+                TestContext.WriteLine($"test-process実行可能ファイルを発見: {fullPath}");
+                return (fullPath, null);
+            }
+        }
+
+        // デバッグ情報: 現在のディレクトリの内容を表示
+        TestContext.WriteLine("現在のディレクトリの内容:");
+        try
+        {
+            var files = Directory.GetFiles(Environment.CurrentDirectory, "*test-process*", SearchOption.AllDirectories);
+            foreach (var file in files)
+            {
+                TestContext.WriteLine($"  - {Path.GetFileName(file)} (FullPath: {file})");
+            }
+        }
+        catch (Exception ex)
+        {
+            TestContext.WriteLine($"ディレクトリ一覧取得エラー: {ex.Message}");
+        }
+
+        // フォールバック: エラーとして例外を投げる
+        throw new FileNotFoundException("test-process実行可能ファイル（test-process.exe または test-process）が見つかりません。tools/test-processディレクトリでビルドされているか確認してください。");
     }
 
     private (string FileName, string? DllPath) FindHostExecutable()

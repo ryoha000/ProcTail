@@ -1,74 +1,92 @@
-# ProcTail Windows Integration Test
+# ProcTail Windows Test Scripts
 
-このディレクトリには、ProcTailのWindows機能をテストするためのPowerShellスクリプトが含まれています。
+ProcTailのWindows環境統合テスト用PowerShellスクリプト群です。
 
 ## 前提条件
 
-- Windows環境
-- 管理者権限でのPowerShell実行
-- ProcTailアプリケーションがビルド・パブリッシュ済み (`publish/host/` と `publish/cli/` にバイナリが存在)
+- Windows管理者権限
+- PowerShell実行ポリシー設定 (RemoteSigned)
+- .NET 8 ランタイム
 
-## テストの流れ
+## スクリプト一覧
 
-1. **cleanup.ps1**: 既存のProcTail HostプロセスとETWセッションを停止
-2. **start-host.ps1**: ProcTail Hostを管理者権限で起動
-3. **start-notepad.ps1**: テスト用のnotepadプロセスを起動
-4. **start-cli.ps1**: ProcTail CLIを起動してnotepadプロセスを監視対象に追加
-5. **file-save-test.ps1**: notepadでファイル保存操作を実行し、イベントを取得・確認
+### `run-test-final.ps1` 【メインテストスクリプト】
+完全な統合テストを実行します。
 
-## 使用方法
+**機能:**
+- ETWセッション自動クリーンアップ
+- Host起動とNotepad監視
+- リアルタイムイベント検証
+- 自動クリーンアップ
 
-### 統合テストの実行
-
+**実行方法:**
 ```powershell
-# WSL環境から実行
-powershell.exe -ExecutionPolicy Bypass -File scripts/windows-test/run-test.ps1
+# WSLから実行（管理者PowerShellが自動で開きます）
+powershell.exe -Command "Start-Process PowerShell -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& \\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\scripts\\windows-test\\run-test-final.ps1; Read-Host Press Enter to exit\"' -Verb RunAs"
 ```
 
-### 個別スクリプトの実行
+### `cleanup-etw-complete.ps1` 【クリーンアップユーティリティ】
+ETWセッションを完全にクリーンアップします。
 
+**実行方法:**
 ```powershell
-# クリーンアップ
-.\cleanup.ps1
-
-# Host起動
-.\start-host.ps1
-
-# Notepad起動
-$pid = .\start-notepad.ps1
-
-# CLI起動とnotepad購読
-.\start-cli.ps1 -NotepadPid $pid -Tag "my-test"
-
-# ファイル保存テスト
-.\file-save-test.ps1 -Tag "my-test"
+powershell.exe -Command "Start-Process PowerShell -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& \\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\scripts\\windows-test\\cleanup-etw-complete.ps1; Read-Host Press Enter to exit\"' -Verb RunAs"
 ```
 
-## パラメータ
+## テスト手順
 
-### run-test.ps1
-- `-Tag`: 監視タグ名 (デフォルト: "test-notepad")
-- `-SkipCleanup`: 初期クリーンアップをスキップ
-- `-KeepProcesses`: テスト完了後もプロセスを維持
+1. **管理者PowerShell起動** (上記コマンドで自動実行)
+2. **UACプロンプト承認** (「はい」をクリック)
+3. **テスト自動実行**:
+   - ETWクリーンアップ
+   - ファイルコピー（WSL → Windows）
+   - Host起動
+   - Notepad起動・監視開始
+4. **ファイル保存操作** (画面指示に従ってNotepadでファイル保存)
+5. **結果確認** (イベント取得・表示)
+6. **自動クリーンアップ**
 
-### start-cli.ps1
-- `-NotepadPid`: 監視対象のnotepad PID (必須)
-- `-CliPath`: ProcTail CLIの実行ファイルパス
-- `-Tag`: 監視タグ名
+## 成功時の出力例
 
-### file-save-test.ps1
-- `-CliPath`: ProcTail CLIの実行ファイルパス
-- `-Tag`: イベント取得用のタグ名
-- `-TestFile`: 保存するテストファイルのパス
-
-## 注意事項
-
-- 必ず管理者権限でPowerShellを実行してください
-- テスト中はnotepadウィンドウをアクティブな状態に保ってください
-- file-save-test.ps1実行時は、キーストロークが送信されるため他の作業は避けてください
+```
+===============================================
+   ProcTail Final Integration Test
+===============================================
+✓ Administrator privileges confirmed
+✓ ETW sessions cleaned up  
+✓ Files copied to C:\Temp\ProcTailTest
+✓ Host is running (PID: 1234)
+✓ Notepad started and monitored (PID: 5678)
+→ Please save a file in Notepad (Ctrl+S)...
+✓ Events detected: FileIO/Create, FileIO/Write
+✓ Test completed successfully
+```
 
 ## トラブルシューティング
 
-- **UACプロンプトが表示される**: Hostの起動時に管理者権限が必要です。許可してください
-- **notepadが見つからない**: notepad.exeがPATHに含まれていることを確認してください
-- **イベントが取得できない**: ETWセッションが正常に開始されているか、またHostが正常に動作しているかを確認してください
+### よくある問題
+
+**「管理者権限が必要」**
+→ PowerShellを右クリック → 「管理者として実行」
+
+**「実行ポリシー制限」** 
+→ `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force`
+
+**「Named Pipe接続失敗」**
+→ Hostサービス起動確認、appsettings.json設定確認
+
+**「イベントが検出されない」**
+→ 監視対象プロセス内でファイル操作実行、ETWセッション確認
+
+## アーキテクチャ
+
+- **Host Service**: ETW監視用バックグラウンドサービス
+- **CLI Tool**: 監視制御用コマンドラインツール  
+- **Named Pipes**: Host-CLI間IPC通信
+- **ETW**: Windowsイベントトレーシング
+
+スクリプトは以下を自動処理します:
+- WSL-Windows間ファイルシステム連携
+- ETWセッション管理
+- プロセスライフサイクル管理
+- リアルタイムイベント検証
