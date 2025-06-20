@@ -557,7 +557,7 @@ public class EndToEndSystemTests
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = cliExecutable.Item1,
-                    Arguments = cliExecutable.Item2 != null ? $"{cliExecutable.Item2} watch {processId} {tag}" : $"watch {processId} {tag}",
+                    Arguments = cliExecutable.Item2 != null ? $"{cliExecutable.Item2} add --pid {processId} --tag {tag}" : $"add --pid {processId} --tag {tag}",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
@@ -650,7 +650,7 @@ public class EndToEndSystemTests
                 StartInfo = new ProcessStartInfo
                 {
                     FileName = cliExecutable.Item1,
-                    Arguments = cliExecutable.Item2 != null ? $"{cliExecutable.Item2} event {tag}" : $"event {tag}",
+                    Arguments = cliExecutable.Item2 != null ? $"{cliExecutable.Item2} events --tag {tag}" : $"events --tag {tag}",
                     UseShellExecute = false,
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,

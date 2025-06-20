@@ -203,11 +203,11 @@ public class MockEtwConfiguration : IEtwConfiguration
 
     public IReadOnlyList<string> EnabledEventNames => new[]
     {
-        "FileIo/Create",
-        "FileIo/Write",
-        "FileIo/Delete",
-        "FileIo/Rename",
-        "FileIo/SetInfo",
+        "FileIO/Create",
+        "FileIO/Write",
+        "FileIO/Delete",
+        "FileIO/Rename",
+        "FileIO/SetInfo",
         "Process/Start",
         "Process/End"
     };

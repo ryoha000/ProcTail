@@ -310,7 +310,7 @@ public class MockNamedPipeServer : INamedPipeServer
                     ProcessId = random.Next(1000, 9999),
                     ThreadId = random.Next(1000, 9999),
                     ProviderName = "Microsoft-Windows-Kernel-FileIO",
-                    EventName = "FileIo/Create",
+                    EventName = "FileIO/Create",
                     ActivityId = Guid.NewGuid(),
                     RelatedActivityId = Guid.NewGuid(),
                     Payload = new Dictionary<string, object> { { "test", "value" } },

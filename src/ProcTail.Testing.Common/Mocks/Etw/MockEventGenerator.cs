@@ -90,7 +90,7 @@ public class MockEventGenerator
     public RawEventData GenerateFileEvent(int processId, string? filePath = null, string operation = "Create")
     {
         filePath ??= GetRandomFilePath();
-        var eventName = $"FileIo/{operation}";
+        var eventName = $"FileIO/{operation}";
         
         var payload = new Dictionary<string, object>
         {
