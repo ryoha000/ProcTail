@@ -35,6 +35,11 @@ ProcTailは、ETW (Event Tracing for Windows) を使用してプロセスのフ�
   - 依存関係DLLの存在確認
   - Host実行プロセスの詳細ログ
 
+- **`cleanup-etw.ps1`** - ETWセッションの完全クリーンアップ
+  - 既存のProcTailプロセス停止
+  - 全てのProcTail関連ETWセッション停止
+  - クリーンアップ確認
+
 ## 実行方法
 
 ### 1. 基本的な統合テスト
@@ -80,6 +85,15 @@ Host起動に問題がある場合：
 ```powershell
 # PowerShell (管理者権限)
 & 'C:/Temp/ProcTailScripts/diagnose-host-startup.ps1' -Verbose
+```
+
+### 4. ETWセッションクリーンアップ
+
+ETWセッションが競合している場合や、テスト環境をリセットしたい場合：
+
+```powershell
+# PowerShell (管理者権限)
+& 'C:/Temp/ProcTailScripts/cleanup-etw.ps1'
 ```
 
 ## テスト内容
@@ -181,7 +195,8 @@ C:/Temp/ProcTailTest/
 
 C:/Temp/ProcTailScripts/
 ├── integration-test.ps1
-└── diagnose-host-startup.ps1
+├── diagnose-host-startup.ps1
+└── cleanup-etw.ps1
 ```
 
 ### Named Pipe設定
