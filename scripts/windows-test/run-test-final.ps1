@@ -31,12 +31,12 @@ try {
 
 Write-Host "✅ Administrator privileges confirmed" -ForegroundColor Green
 
-# テストファイルのパス設定
-$testRoot = 'C:\Temp\ProcTailTest'
-$hostDir = Join-Path $testRoot 'host'
-$cliDir = Join-Path $testRoot 'cli'
-$hostPath = Join-Path $hostDir 'ProcTail.Host.exe'
-$cliPath = Join-Path $cliDir 'proctail.exe'
+# テストファイルのパス設定 - 直接文字列指定
+$testRoot = "C:/Temp/ProcTailTest"
+$hostDir = "C:/Temp/ProcTailTest/host"
+$cliDir = "C:/Temp/ProcTailTest/cli"
+$hostPath = "C:/Temp/ProcTailTest/host/ProcTail.Host.exe"
+$cliPath = "C:/Temp/ProcTailTest/cli/proctail.exe"
 
 # ファイル存在確認
 if (-not (Test-Path $hostPath)) {

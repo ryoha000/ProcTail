@@ -19,14 +19,17 @@ try {
     Write-Host "❌ Error checking admin privileges: $($_.Exception.Message)" -ForegroundColor Red
 }
 
-# ファイル存在確認
-$testRoot = 'C:\Temp\ProcTailTest'
-$hostPath = "$testRoot\host\ProcTail.Host.exe"
-$cliPath = "$testRoot\cli\proctail.exe"
+# ファイル存在確認 - 直接文字列指定
+$testRoot = "C:/Temp/ProcTailTest"
+$hostPath = "C:/Temp/ProcTailTest/host/ProcTail.Host.exe"
+$cliPath = "C:/Temp/ProcTailTest/cli/proctail.exe"
 
 Write-Host ""
 Write-Host "File existence check:" -ForegroundColor Cyan
-Write-Host "Test root: $testRoot" -ForegroundColor Gray
+Write-Host "Debug - testRoot variable type: $($testRoot.GetType().Name)" -ForegroundColor Gray
+Write-Host "Debug - testRoot value: '$testRoot'" -ForegroundColor Gray
+Write-Host "Debug - testRoot length: $($testRoot.Length)" -ForegroundColor Gray
+Write-Host "Debug - testRoot is null: $($testRoot -eq $null)" -ForegroundColor Gray
 
 if (Test-Path $testRoot) {
     Write-Host "✅ Test directory exists" -ForegroundColor Green
