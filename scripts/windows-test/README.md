@@ -10,41 +10,56 @@ ProcTailのWindows環境統合テスト用PowerShellスクリプト群です。
 
 ## スクリプト一覧
 
-### `run-test-final.ps1` 【メインテストスクリプト】
-完全な統合テストを実行します。
+### `run-windows-test.sh` 【メインランナー】
+ビルドからテスト実行まで全体を制御するUnix shell script。
 
 **機能:**
-- ETWセッション自動クリーンアップ
+- プロジェクトの自動ビルド
+- Windows環境へのファイルコピー
+- 設定ファイルの自動調整
+- PowerShellテストスクリプトの起動
+
+**実行方法:**
+```bash
+# WSLから実行
+./scripts/windows-test/run-windows-test.sh
+```
+
+### `run-test-final.ps1` 【テスト実行】
+Windows環境での統合テスト実行を担当。
+
+**機能:**
+- ETWセッションクリーンアップ
 - Host起動とNotepad監視
 - リアルタイムイベント検証
 - 自動クリーンアップ
 
-**実行方法:**
-```powershell
-# WSLから実行（管理者PowerShellが自動で開きます）
-powershell.exe -Command "Start-Process PowerShell -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& \\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\scripts\\windows-test\\run-test-final.ps1; Read-Host Press Enter to exit\"' -Verb RunAs"
-```
+**前提条件:** 事前に `run-windows-test.sh` でファイル準備が必要
 
 ### `cleanup-etw-complete.ps1` 【クリーンアップユーティリティ】
 ETWセッションを完全にクリーンアップします。
 
-**実行方法:**
-```powershell
-powershell.exe -Command "Start-Process PowerShell -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& \\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\scripts\\windows-test\\cleanup-etw-complete.ps1; Read-Host Press Enter to exit\"' -Verb RunAs"
-```
-
 ## テスト手順
 
-1. **管理者PowerShell起動** (上記コマンドで自動実行)
-2. **UACプロンプト承認** (「はい」をクリック)
-3. **テスト自動実行**:
+1. **Shell scriptでビルド・準備**:
+   ```bash
+   ./scripts/windows-test/run-windows-test.sh
+   ```
+   - プロジェクトビルド
+   - Windows環境へファイルコピー
+   - 設定ファイル調整
+
+2. **PowerShellテスト実行** (自動で管理者権限ウィンドウが開く):
+   - UACプロンプト承認 (「はい」をクリック)
    - ETWクリーンアップ
-   - ファイルコピー（WSL → Windows）
    - Host起動
    - Notepad起動・監視開始
-4. **ファイル保存操作** (画面指示に従ってNotepadでファイル保存)
-5. **結果確認** (イベント取得・表示)
-6. **自動クリーンアップ**
+
+3. **ファイル保存操作** (画面指示に従ってNotepadでファイル保存)
+
+4. **結果確認** (イベント取得・表示)
+
+5. **自動クリーンアップ**
 
 ## 成功時の出力例
 

@@ -1,5 +1,5 @@
-# Final integration test with ETW cleanup and pipe name fix
-# ETWクリーンアップとパイプ名修正を含む最終統合テスト
+# ProcTail Windows Integration Test
+# テスト実行のみを担当（ビルドとファイルコピーはshell scriptで実行済み）
 
 param(
     [string]$Tag = "test-notepad",
@@ -8,218 +8,180 @@ param(
 )
 
 Write-Host "===============================================" -ForegroundColor Yellow
-Write-Host "   ProcTail Final Integration Test" -ForegroundColor Yellow
+Write-Host "   ProcTail Windows Integration Test" -ForegroundColor Yellow
 Write-Host "===============================================" -ForegroundColor Yellow
 
-# Check admin rights
+# 管理者権限チェック
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "ERROR: This test requires administrator privileges." -ForegroundColor Red
+    Write-Host "❌ ERROR: This test requires administrator privileges." -ForegroundColor Red
     Read-Host "Press Enter to exit"
     exit 1
 }
 
-# Setup paths
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
+Write-Host "✅ Administrator privileges confirmed" -ForegroundColor Green
 
-# WSLパスからファイルをコピー
-$wslProjectPath = "\\wsl.localhost\Ubuntu\home\ryoha\workspace\proctail"
-$sourceHostDir = Join-Path $wslProjectPath "src\ProcTail.Host\bin\Release\net8.0"
-$sourceCliDir = Join-Path $wslProjectPath "src\ProcTail.Cli\bin\Release\net8.0"
+# テストファイルのパス設定
+$testRoot = "C:\Temp\ProcTailTest"
+$hostDir = Join-Path $testRoot "host"
+$cliDir = Join-Path $testRoot "cli"
+$hostPath = Join-Path $hostDir "ProcTail.Host.exe"
+$cliPath = Join-Path $cliDir "proctail.exe"
 
-$localRoot = "C:\Temp\ProcTailTest"
-$localHostDir = Join-Path $localRoot "host"
-$localCliDir = Join-Path $localRoot "cli"
-$localHostPath = Join-Path $localHostDir "ProcTail.Host.exe"
-$localCliPath = Join-Path $localCliDir "proctail.exe"
-
-try {
-    # Step 1: ETW Cleanup
-    Write-Host "`nStep 1: ETW Session Cleanup..." -ForegroundColor Yellow
-    
-    $etwSessions = @("ProcTail", "ProcTail-Dev", "NT Kernel Logger")
-    foreach ($session in $etwSessions) {
-        try {
-            logman stop $session -ets 2>$null
-            Write-Host "Stopped ETW session: $session" -ForegroundColor Green
-        }
-        catch {
-            Write-Host "ETW session '$session' was not running" -ForegroundColor Gray
-        }
-    }
-    
-    # Kill existing processes
-    Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Seconds 3
-    
-    Write-Host "✓ ETW cleanup completed" -ForegroundColor Green
-
-    # Step 2: Build and prepare local copy
-    Write-Host "`nStep 2: Building and preparing local copy..." -ForegroundColor Yellow
-    
-    # Build the projects first from WSL
-    Write-Host "Building projects..." -ForegroundColor Gray
-    $buildResult = wsl.exe bash -c "cd /home/ryoha/workspace/proctail && dotnet build --configuration Release"
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "❌ Build failed" -ForegroundColor Red
-        throw "Build failed with exit code $LASTEXITCODE"
-    }
-    Write-Host "✓ Build completed" -ForegroundColor Green
-    
-    New-Item -ItemType Directory -Path $localRoot -Force | Out-Null
-    New-Item -ItemType Directory -Path $localHostDir -Force | Out-Null
-    New-Item -ItemType Directory -Path $localCliDir -Force | Out-Null
-    
-    # Check if source directories exist
-    if (-not (Test-Path $sourceHostDir)) {
-        Write-Host "❌ Host build output not found at: $sourceHostDir" -ForegroundColor Red
-        throw "Host build output directory not found"
-    }
-    if (-not (Test-Path $sourceCliDir)) {
-        Write-Host "❌ CLI build output not found at: $sourceCliDir" -ForegroundColor Red
-        throw "CLI build output directory not found"
-    }
-    
-    Copy-Item -Path "$sourceHostDir\*" -Destination $localHostDir -Recurse -Force
-    Copy-Item -Path "$sourceCliDir\*" -Destination $localCliDir -Recurse -Force
-    
-    # Fix appsettings.json PipeName for Development environment
-    $configPath = Join-Path $localHostDir "appsettings.json"
-    $config = Get-Content $configPath -Raw | ConvertFrom-Json
-    $config.NamedPipe.PipeName = "ProcTail"
-    $config | ConvertTo-Json -Depth 10 | Set-Content $configPath
-    
-    Write-Host "✓ Files copied and configured" -ForegroundColor Green
-
-    # Step 3: Start Host
-    Write-Host "`nStep 3: Starting ProcTail Host..." -ForegroundColor Yellow
-    
-    $hostProcess = Start-Process -FilePath $localHostPath -PassThru -WorkingDirectory $localHostDir
-    Write-Host "Host started with PID: $($hostProcess.Id)" -ForegroundColor Cyan
-    
-    # Wait for initialization
-    Write-Host "Waiting for Host initialization..." -ForegroundColor Gray
-    Start-Sleep -Seconds 5
-    
-    # Verify Host is running
-    if (-not (Get-Process -Id $hostProcess.Id -ErrorAction SilentlyContinue)) {
-        throw "Host process exited unexpectedly"
-    }
-    
-    Write-Host "✓ Host is running successfully" -ForegroundColor Green
-
-    # Step 4: Verify Named Pipe
-    Write-Host "`nStep 4: Verifying Named Pipe..." -ForegroundColor Yellow
-    
-    Start-Sleep -Seconds 2
-    $statusResult = & $localCliPath status 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Named Pipe connection successful!" -ForegroundColor Green
-        Write-Host "Status result: $statusResult" -ForegroundColor Gray
-    } else {
-        Write-Host "⚠ Named Pipe connection failed: $statusResult" -ForegroundColor Yellow
-        Write-Host "Continuing with test anyway..." -ForegroundColor Gray
-    }
-
-    # Step 5: Start Notepad
-    Write-Host "`nStep 5: Starting Notepad..." -ForegroundColor Yellow
-    
-    $notepadProcess = Start-Process -FilePath "notepad.exe" -PassThru
-    $notepadPid = $notepadProcess.Id
-    Write-Host "✓ Notepad started with PID: $notepadPid" -ForegroundColor Green
-    Start-Sleep -Seconds 2
-
-    # Step 6: Add watch target
-    Write-Host "`nStep 6: Adding watch target..." -ForegroundColor Yellow
-    
-    $addResult = & $localCliPath add --pid $notepadPid --tag $Tag 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Successfully added watch target!" -ForegroundColor Green
-        Write-Host "Result: $addResult" -ForegroundColor Gray
-    } else {
-        Write-Host "✗ Failed to add watch target: $addResult" -ForegroundColor Red
-        throw "Failed to add watch target"
-    }
-
-    # Step 7: File save test
-    Write-Host "`nStep 7: File save test..." -ForegroundColor Yellow
-    Write-Host "This will send keystrokes to Notepad." -ForegroundColor Cyan
-    Write-Host "Ensure Notepad window is active." -ForegroundColor Cyan
-    Read-Host "Press Enter when ready"
-    
-    Add-Type -AssemblyName System.Windows.Forms
-    
-    [System.Windows.Forms.SendKeys]::SendWait("ProcTail integration test{ENTER}")
-    [System.Windows.Forms.SendKeys]::SendWait("Time: $(Get-Date){ENTER}")
-    Start-Sleep -Seconds 1
-    
-    [System.Windows.Forms.SendKeys]::SendWait("^s")
-    Start-Sleep -Seconds 2
-    
-    $testFile = "$env:TEMP\proctail-final-test-$(Get-Date -Format 'yyyyMMdd-HHmmss').txt"
-    [System.Windows.Forms.SendKeys]::SendWait($testFile)
-    Start-Sleep -Seconds 1
-    [System.Windows.Forms.SendKeys]::SendWait("{ENTER}")
-    
-    Start-Sleep -Seconds 3
-    Write-Host "✓ File save completed" -ForegroundColor Green
-
-    # Step 8: Retrieve events
-    Write-Host "`nStep 8: Retrieving events..." -ForegroundColor Yellow
-    Start-Sleep -Seconds 2
-    
-    $eventsResult = & $localCliPath events --tag $Tag 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        Write-Host "✓ Events retrieved!" -ForegroundColor Green
-        Write-Host "`n=== EVENTS ===" -ForegroundColor Yellow
-        Write-Host $eventsResult
-        Write-Host "=== END EVENTS ===" -ForegroundColor Yellow
-        
-        if ($eventsResult -match "FileEventData" -or $eventsResult -match "Create" -or $eventsResult -match "Write") {
-            Write-Host "`n🎉 SUCCESS: File operation events detected!" -ForegroundColor Green
-        } else {
-            Write-Host "`n⚠ No file operation events found" -ForegroundColor Yellow
-        }
-    } else {
-        Write-Host "✗ Failed to retrieve events: $eventsResult" -ForegroundColor Red
-    }
-
-    # Success
-    Write-Host "`n===============================================" -ForegroundColor Green
-    Write-Host "    INTEGRATION TEST COMPLETED!" -ForegroundColor Green
-    Write-Host "===============================================" -ForegroundColor Green
-
-    # Cleanup
-    if (-not $KeepProcesses) {
-        Write-Host "`nCleaning up..." -ForegroundColor Yellow
-        Get-Process -Name "notepad" -ErrorAction SilentlyContinue | Where-Object { $_.Id -eq $notepadPid } | Stop-Process -Force -ErrorAction SilentlyContinue
-        Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue | Where-Object { $_.Id -eq $hostProcess.Id } | Stop-Process -Force -ErrorAction SilentlyContinue
-        
-        # ETW cleanup
-        foreach ($session in $etwSessions) {
-            try { logman stop $session -ets 2>$null } catch {}
-        }
-        
-        Write-Host "✓ Cleanup completed" -ForegroundColor Green
-    }
-
-}
-catch {
-    Write-Host "`n===============================================" -ForegroundColor Red
-    Write-Host "    TEST FAILED!" -ForegroundColor Red
-    Write-Host "===============================================" -ForegroundColor Red
-    Write-Host "Error: $_" -ForegroundColor Red
-    
-    # Cleanup on failure
-    Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    Get-Process -Name "notepad" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    
-    foreach ($session in @("ProcTail", "ProcTail-Dev", "NT Kernel Logger")) {
-        try { logman stop $session -ets 2>$null } catch {}
-    }
-    
+# ファイル存在確認
+if (-not (Test-Path $hostPath)) {
+    Write-Host "❌ ERROR: Host executable not found at: $hostPath" -ForegroundColor Red
+    Write-Host "Please run the shell script first to build and copy files." -ForegroundColor Yellow
+    Read-Host "Press Enter to exit"
     exit 1
 }
 
-Read-Host "Press Enter to exit"
+if (-not (Test-Path $cliPath)) {
+    Write-Host "❌ ERROR: CLI executable not found at: $cliPath" -ForegroundColor Red
+    Write-Host "Please run the shell script first to build and copy files." -ForegroundColor Yellow
+    Read-Host "Press Enter to exit"
+    exit 1
+}
+
+Write-Host "✅ Required files found" -ForegroundColor Green
+
+try {
+    # Step 1: ETWセッションクリーンアップ
+    Write-Host "`n🧹 Step 1: ETW Session Cleanup..." -ForegroundColor Cyan
+    
+    # 既存のETWセッションを停止
+    $etwSessions = @("ProcTail", "ProcTail-Dev", "NT Kernel Logger")
+    foreach ($session in $etwSessions) {
+        try {
+            logman stop $session -ets 2>$null | Out-Null
+            Write-Host "Stopped ETW session: $session" -ForegroundColor Gray
+        }
+        catch {
+            # セッションが存在しない場合は無視
+        }
+    }
+    
+    # 既存のHostプロセスを停止
+    Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    
+    Write-Host "✅ ETW cleanup completed" -ForegroundColor Green
+
+    # Step 2: Host起動
+    Write-Host "`n🚀 Step 2: Starting ProcTail Host..." -ForegroundColor Cyan
+    
+    $hostProcess = Start-Process -FilePath $hostPath -PassThru -WorkingDirectory $hostDir -WindowStyle Hidden
+    Write-Host "Host started with PID: $($hostProcess.Id)" -ForegroundColor Green
+    
+    # Host初期化待機
+    Write-Host "Waiting for Host initialization..." -ForegroundColor Gray
+    Start-Sleep -Seconds 5
+    
+    # Hostの生存確認
+    if ($hostProcess.HasExited) {
+        Write-Host "❌ Host process has exited unexpectedly" -ForegroundColor Red
+        throw "Host failed to start"
+    }
+    
+    Write-Host "✅ Host is running" -ForegroundColor Green
+
+    # Step 3: Notepad起動と監視開始
+    Write-Host "`n📝 Step 3: Starting Notepad and monitoring..." -ForegroundColor Cyan
+    
+    $notepad = Start-Process -FilePath "notepad.exe" -PassThru
+    $notepadPid = $notepad.Id
+    Write-Host "Notepad started with PID: $notepadPid" -ForegroundColor Green
+    
+    # 監視対象に追加
+    Write-Host "Adding Notepad to monitoring..." -ForegroundColor Gray
+    $addResult = & $cliPath add --pid $notepadPid --tag $Tag 2>&1
+    Write-Host "Add result: $addResult" -ForegroundColor Gray
+    
+    # 監視状態確認
+    Start-Sleep -Seconds 2
+    $status = & $cliPath status 2>&1
+    Write-Host "Status: $status" -ForegroundColor Gray
+    
+    Write-Host "✅ Notepad monitoring started" -ForegroundColor Green
+
+    # Step 4: ファイル保存テスト
+    Write-Host "`n💾 Step 4: File save test..." -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host "  Please perform the following steps:" -ForegroundColor Yellow
+    Write-Host "========================================" -ForegroundColor Yellow
+    Write-Host "1. Switch to the Notepad window" -ForegroundColor White
+    Write-Host "2. Type some text" -ForegroundColor White
+    Write-Host "3. Press Ctrl+S to save" -ForegroundColor White
+    Write-Host "4. Choose any location and filename" -ForegroundColor White
+    Write-Host "5. Click Save" -ForegroundColor White
+    Write-Host ""
+    
+    Read-Host "Press Enter after you have saved the file in Notepad"
+
+    # Step 5: イベント確認
+    Write-Host "`n🔍 Step 5: Checking captured events..." -ForegroundColor Cyan
+    
+    Start-Sleep -Seconds 2
+    $events = & $cliPath events --tag $Tag 2>&1
+    
+    Write-Host ""
+    Write-Host "================= EVENTS =================" -ForegroundColor Yellow
+    Write-Host $events -ForegroundColor White
+    Write-Host "==========================================" -ForegroundColor Yellow
+    
+    # イベントが取得できたかチェック
+    if ($events -and $events.ToString().Contains("FileIO")) {
+        Write-Host "✅ File events detected successfully!" -ForegroundColor Green
+        $testSuccess = $true
+    } else {
+        Write-Host "⚠️  No file events detected" -ForegroundColor Yellow
+        Write-Host "This might indicate a filtering or monitoring issue" -ForegroundColor Gray
+        $testSuccess = $false
+    }
+
+} catch {
+    Write-Host "❌ Test failed with error: $($_.Exception.Message)" -ForegroundColor Red
+    $testSuccess = $false
+} finally {
+    # クリーンアップ
+    Write-Host "`n🧹 Cleanup..." -ForegroundColor Cyan
+    
+    if (-not $KeepProcesses) {
+        # Notepadを閉じる
+        if ($notepad -and -not $notepad.HasExited) {
+            $notepad | Stop-Process -Force -ErrorAction SilentlyContinue
+            Write-Host "Notepad closed" -ForegroundColor Gray
+        }
+        
+        # Hostを停止
+        if ($hostProcess -and -not $hostProcess.HasExited) {
+            $hostProcess | Stop-Process -Force -ErrorAction SilentlyContinue
+            Write-Host "Host stopped" -ForegroundColor Gray
+        }
+        
+        # ETWセッションを再度クリーンアップ
+        foreach ($session in $etwSessions) {
+            try {
+                logman stop $session -ets 2>$null | Out-Null
+            }
+            catch {
+                # 無視
+            }
+        }
+    } else {
+        Write-Host "Processes kept running (--KeepProcesses flag)" -ForegroundColor Yellow
+    }
+}
+
+# 結果表示
+Write-Host ""
+Write-Host "===============================================" -ForegroundColor Yellow
+if ($testSuccess) {
+    Write-Host "🎉 TEST COMPLETED SUCCESSFULLY!" -ForegroundColor Green
+} else {
+    Write-Host "❌ TEST COMPLETED WITH ISSUES" -ForegroundColor Red
+}
+Write-Host "===============================================" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "Test files are located at: $testRoot" -ForegroundColor Gray
