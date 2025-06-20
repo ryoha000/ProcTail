@@ -22,8 +22,11 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 # Setup paths
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent (Split-Path -Parent $scriptDir)
-$sourceHostDir = Join-Path $projectRoot "publish\host"
-$sourceCliDir = Join-Path $projectRoot "publish\cli"
+
+# WSLパスからファイルをコピー
+$wslProjectPath = "\\wsl.localhost\Ubuntu\home\ryoha\workspace\proctail"
+$sourceHostDir = Join-Path $wslProjectPath "src\ProcTail.Host\bin\Release\net8.0"
+$sourceCliDir = Join-Path $wslProjectPath "src\ProcTail.Cli\bin\Release\net8.0"
 
 $localRoot = "C:\Temp\ProcTailTest"
 $localHostDir = Join-Path $localRoot "host"
@@ -52,12 +55,31 @@ try {
     
     Write-Host "✓ ETW cleanup completed" -ForegroundColor Green
 
-    # Step 2: Prepare local copy
-    Write-Host "`nStep 2: Preparing local copy..." -ForegroundColor Yellow
+    # Step 2: Build and prepare local copy
+    Write-Host "`nStep 2: Building and preparing local copy..." -ForegroundColor Yellow
+    
+    # Build the projects first from WSL
+    Write-Host "Building projects..." -ForegroundColor Gray
+    $buildResult = wsl.exe bash -c "cd /home/ryoha/workspace/proctail && dotnet build --configuration Release"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "❌ Build failed" -ForegroundColor Red
+        throw "Build failed with exit code $LASTEXITCODE"
+    }
+    Write-Host "✓ Build completed" -ForegroundColor Green
     
     New-Item -ItemType Directory -Path $localRoot -Force | Out-Null
     New-Item -ItemType Directory -Path $localHostDir -Force | Out-Null
     New-Item -ItemType Directory -Path $localCliDir -Force | Out-Null
+    
+    # Check if source directories exist
+    if (-not (Test-Path $sourceHostDir)) {
+        Write-Host "❌ Host build output not found at: $sourceHostDir" -ForegroundColor Red
+        throw "Host build output directory not found"
+    }
+    if (-not (Test-Path $sourceCliDir)) {
+        Write-Host "❌ CLI build output not found at: $sourceCliDir" -ForegroundColor Red
+        throw "CLI build output directory not found"
+    }
     
     Copy-Item -Path "$sourceHostDir\*" -Destination $localHostDir -Recurse -Force
     Copy-Item -Path "$sourceCliDir\*" -Destination $localCliDir -Recurse -Force
