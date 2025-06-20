@@ -61,20 +61,57 @@ $notepad = $null
 Write-Host ""
 Write-Host "Step 1: ETW Session Cleanup..." -ForegroundColor Cyan
 
-$etwSessions = @("ProcTail", "ProcTail-Dev", "NT Kernel Logger")
-foreach ($session in $etwSessions) {
+# Use dedicated cleanup script for comprehensive ETW cleanup
+$cleanupScriptPath = "C:/Temp/ProcTailScripts/cleanup-etw.ps1"
+if (Test-Path $cleanupScriptPath) {
+    Write-Host "Running comprehensive ETW cleanup script..." -ForegroundColor Gray
     try {
-        logman stop $session -ets 2>$null | Out-Null
-        Write-Host "Stopped ETW session: $session" -ForegroundColor Gray
+        # Run cleanup script in silent mode for automated execution
+        $cleanupSuccess = & $cleanupScriptPath -Silent
+        if ($cleanupSuccess) {
+            Write-Host "Comprehensive ETW cleanup completed successfully" -ForegroundColor Green
+        } else {
+            Write-Host "ETW cleanup completed with warnings (some sessions may still be running)" -ForegroundColor Yellow
+        }
     }
     catch {
-        # Session not running, ignore
+        Write-Host "Warning: Cleanup script failed, falling back to manual cleanup" -ForegroundColor Yellow
+        
+        # Fallback manual cleanup
+        $etwSessions = @("ProcTail", "ProcTail-Dev", "NT Kernel Logger")
+        foreach ($session in $etwSessions) {
+            try {
+                logman stop $session -ets 2>$null | Out-Null
+                Write-Host "Stopped ETW session: $session" -ForegroundColor Gray
+            }
+            catch {
+                # Session not running, ignore
+            }
+        }
+        
+        # Stop existing Host processes
+        Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
     }
+} else {
+    Write-Host "Cleanup script not found, using manual cleanup..." -ForegroundColor Yellow
+    
+    # Fallback manual cleanup
+    $etwSessions = @("ProcTail", "ProcTail-Dev", "NT Kernel Logger")
+    foreach ($session in $etwSessions) {
+        try {
+            logman stop $session -ets 2>$null | Out-Null
+            Write-Host "Stopped ETW session: $session" -ForegroundColor Gray
+        }
+        catch {
+            # Session not running, ignore
+        }
+    }
+    
+    # Stop existing Host processes
+    Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
 }
-
-# Stop existing Host processes
-Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 2
 
 Write-Host "ETW cleanup completed" -ForegroundColor Green
 
@@ -217,13 +254,23 @@ if (-not $KeepProcesses) {
         Write-Host "Host stopped" -ForegroundColor Gray
     }
     
-    # Clean ETW sessions again
-    foreach ($session in $etwSessions) {
+    # Clean ETW sessions again using dedicated script
+    if (Test-Path $cleanupScriptPath) {
+        Write-Host "Running final ETW cleanup..." -ForegroundColor Gray
         try {
-            logman stop $session -ets 2>$null | Out-Null
+            & $cleanupScriptPath -Silent | Out-Null
         }
         catch {
-            # Ignore
+            # Fallback to manual cleanup if script fails
+            $fallbackSessions = @("ProcTail", "ProcTail-Dev", "NT Kernel Logger")
+            foreach ($session in $fallbackSessions) {
+                try {
+                    logman stop $session -ets 2>$null | Out-Null
+                }
+                catch {
+                    # Ignore
+                }
+            }
         }
     }
 } else {

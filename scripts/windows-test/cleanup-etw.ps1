@@ -1,8 +1,14 @@
 # Complete ETW cleanup including ProcTail_ sessions
 # ProcTail_セッションを含む完全なETWクリーンアップ
 
-Write-Host "Complete ETW Session Cleanup" -ForegroundColor Yellow
-Write-Host "============================" -ForegroundColor Yellow
+param(
+    [switch]$Silent  # Silent mode for automated execution
+)
+
+if (-not $Silent) {
+    Write-Host "Complete ETW Session Cleanup" -ForegroundColor Yellow
+    Write-Host "============================" -ForegroundColor Yellow
+}
 
 # Check admin rights
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
@@ -12,19 +18,27 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     exit 1
 }
 
-Write-Host "Administrator privileges confirmed" -ForegroundColor Green
+if (-not $Silent) {
+    Write-Host "Administrator privileges confirmed" -ForegroundColor Green
+}
 
 # Kill any existing ProcTail processes first
-Write-Host "`nKilling existing ProcTail processes..." -ForegroundColor Cyan
+if (-not $Silent) {
+    Write-Host "`nKilling existing ProcTail processes..." -ForegroundColor Cyan
+}
 Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue | ForEach-Object {
-    Write-Host "Killing ProcTail.Host process (PID: $($_.Id))" -ForegroundColor Yellow
+    if (-not $Silent) {
+        Write-Host "Killing ProcTail.Host process (PID: $($_.Id))" -ForegroundColor Yellow
+    }
     $_ | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
 Start-Sleep -Seconds 2
 
 # Get current ETW sessions
-Write-Host "`nGetting current ETW sessions..." -ForegroundColor Cyan
+if (-not $Silent) {
+    Write-Host "`nGetting current ETW sessions..." -ForegroundColor Cyan
+}
 $sessions = logman query -ets 2>&1
 
 # Find ProcTail related sessions
@@ -39,36 +53,50 @@ foreach ($line in $lines) {
     }
 }
 
-Write-Host "Found ProcTail ETW sessions:" -ForegroundColor Yellow
-if ($procTailSessions.Count -eq 0) {
-    Write-Host "  (none found)" -ForegroundColor Gray
-} else {
-    foreach ($session in $procTailSessions) {
-        Write-Host "  $session" -ForegroundColor Gray
+if (-not $Silent) {
+    Write-Host "Found ProcTail ETW sessions:" -ForegroundColor Yellow
+    if ($procTailSessions.Count -eq 0) {
+        Write-Host "  (none found)" -ForegroundColor Gray
+    } else {
+        foreach ($session in $procTailSessions) {
+            Write-Host "  $session" -ForegroundColor Gray
+        }
     }
 }
 
 # Stop all ProcTail sessions
-Write-Host "`nStopping ProcTail ETW sessions..." -ForegroundColor Cyan
+if (-not $Silent) {
+    Write-Host "`nStopping ProcTail ETW sessions..." -ForegroundColor Cyan
+}
 $allSessions = @("ProcTail", "ProcTail-Dev", "NT Kernel Logger") + $procTailSessions
 
 foreach ($session in $allSessions) {
     try {
-        Write-Host "Stopping: $session" -ForegroundColor Gray
+        if (-not $Silent) {
+            Write-Host "Stopping: $session" -ForegroundColor Gray
+        }
         $result = logman stop $session -ets 2>&1
         if ($LASTEXITCODE -eq 0) {
-            Write-Host "✓ Stopped: $session" -ForegroundColor Green
+            if (-not $Silent) {
+                Write-Host "✓ Stopped: $session" -ForegroundColor Green
+            }
         } else {
-            Write-Host "⚠ Session not running or already stopped: $session" -ForegroundColor Yellow
+            if (-not $Silent) {
+                Write-Host "⚠ Session not running or already stopped: $session" -ForegroundColor Yellow
+            }
         }
     }
     catch {
-        Write-Host "⚠ Error stopping $session`: $_" -ForegroundColor Yellow
+        if (-not $Silent) {
+            Write-Host "⚠ Error stopping $session`: $_" -ForegroundColor Yellow
+        }
     }
 }
 
 # Additional cleanup - try to stop any session with "ProcTail" in the name
-Write-Host "`nPerforming comprehensive cleanup..." -ForegroundColor Cyan
+if (-not $Silent) {
+    Write-Host "`nPerforming comprehensive cleanup..." -ForegroundColor Cyan
+}
 $allSessionsOutput = logman query -ets 2>&1
 $allLines = $allSessionsOutput -split "`n"
 
@@ -77,12 +105,18 @@ foreach ($line in $allLines) {
         $sessionName = ($line -split '\s+')[0].Trim()
         if ($sessionName -and $sessionName -notmatch "^-+$") {
             try {
-                Write-Host "Force stopping: $sessionName" -ForegroundColor Gray
+                if (-not $Silent) {
+                    Write-Host "Force stopping: $sessionName" -ForegroundColor Gray
+                }
                 logman stop $sessionName -ets 2>$null
-                Write-Host "✓ Force stopped: $sessionName" -ForegroundColor Green
+                if (-not $Silent) {
+                    Write-Host "✓ Force stopped: $sessionName" -ForegroundColor Green
+                }
             }
             catch {
-                Write-Host "⚠ Could not force stop: $sessionName" -ForegroundColor Yellow
+                if (-not $Silent) {
+                    Write-Host "⚠ Could not force stop: $sessionName" -ForegroundColor Yellow
+                }
             }
         }
     }
@@ -92,7 +126,9 @@ foreach ($line in $allLines) {
 Start-Sleep -Seconds 3
 
 # Verify cleanup
-Write-Host "`nVerifying cleanup..." -ForegroundColor Cyan
+if (-not $Silent) {
+    Write-Host "`nVerifying cleanup..." -ForegroundColor Cyan
+}
 $finalSessions = logman query -ets 2>&1
 $finalLines = $finalSessions -split "`n"
 $remainingProcTail = @()
@@ -106,16 +142,21 @@ foreach ($line in $finalLines) {
     }
 }
 
-if ($remainingProcTail.Count -eq 0) {
-    Write-Host "✓ All ProcTail ETW sessions have been stopped!" -ForegroundColor Green
-} else {
-    Write-Host "⚠ Some ProcTail sessions are still running:" -ForegroundColor Yellow
-    foreach ($session in $remainingProcTail) {
-        Write-Host "  $session" -ForegroundColor Red
+if (-not $Silent) {
+    if ($remainingProcTail.Count -eq 0) {
+        Write-Host "✓ All ProcTail ETW sessions have been stopped!" -ForegroundColor Green
+    } else {
+        Write-Host "⚠ Some ProcTail sessions are still running:" -ForegroundColor Yellow
+        foreach ($session in $remainingProcTail) {
+            Write-Host "  $session" -ForegroundColor Red
+        }
     }
+
+    Write-Host "`nETW cleanup completed!" -ForegroundColor Green
+    Write-Host "You can now run the ProcTail Host." -ForegroundColor Cyan
+
+    Read-Host "Press Enter to exit"
 }
 
-Write-Host "`nETW cleanup completed!" -ForegroundColor Green
-Write-Host "You can now run the ProcTail Host." -ForegroundColor Cyan
-
-Read-Host "Press Enter to exit"
+# Return status for automated use
+return ($remainingProcTail.Count -eq 0)
