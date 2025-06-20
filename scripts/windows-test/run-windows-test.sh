@@ -87,7 +87,7 @@ echo ""
 
 # PowerShellウィンドウを開いたままにするため、-NoExit を追加
 powershell.exe -Command "
-    Start-Process PowerShell -ArgumentList '-NoExit -ExecutionPolicy RemoteSigned -Command \"try { & $WINDOWS_SCRIPTS_DIR\\run-test-final.ps1 } catch { Write-Host \\"Error: \$_\\" -ForegroundColor Red; Read-Host \\"Press Enter to exit\\" }\"' -Verb RunAs
+    Start-Process PowerShell -ArgumentList '-NoExit -ExecutionPolicy RemoteSigned -Command \"try { & $WINDOWS_SCRIPTS_DIR\\run-test-final-fixed.ps1 } catch { Write-Host \\"Error: \$_\\" -ForegroundColor Red; Read-Host \\"Press Enter to exit\\" }\"' -Verb RunAs
 "
 
 echo ""
