@@ -11,10 +11,20 @@ Write-Host "===============================================" -ForegroundColor Ye
 Write-Host "   ProcTail Windows Integration Test" -ForegroundColor Yellow
 Write-Host "===============================================" -ForegroundColor Yellow
 
+# エラー発生時にスクリプトを停止
+$ErrorActionPreference = "Stop"
+
 # 管理者権限チェック
-$currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Host "❌ ERROR: This test requires administrator privileges." -ForegroundColor Red
+try {
+    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Write-Host "❌ ERROR: This test requires administrator privileges." -ForegroundColor Red
+        Write-Host "Please run PowerShell as Administrator" -ForegroundColor Yellow
+        Read-Host "Press Enter to exit"
+        exit 1
+    }
+} catch {
+    Write-Host "❌ ERROR checking administrator privileges: $($_.Exception.Message)" -ForegroundColor Red
     Read-Host "Press Enter to exit"
     exit 1
 }
@@ -22,11 +32,11 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 Write-Host "✅ Administrator privileges confirmed" -ForegroundColor Green
 
 # テストファイルのパス設定
-$testRoot = "C:\Temp\ProcTailTest"
-$hostDir = Join-Path $testRoot "host"
-$cliDir = Join-Path $testRoot "cli"
-$hostPath = Join-Path $hostDir "ProcTail.Host.exe"
-$cliPath = Join-Path $cliDir "proctail.exe"
+$testRoot = 'C:\Temp\ProcTailTest'
+$hostDir = Join-Path $testRoot 'host'
+$cliDir = Join-Path $testRoot 'cli'
+$hostPath = Join-Path $hostDir 'ProcTail.Host.exe'
+$cliPath = Join-Path $cliDir 'proctail.exe'
 
 # ファイル存在確認
 if (-not (Test-Path $hostPath)) {
@@ -44,6 +54,11 @@ if (-not (Test-Path $cliPath)) {
 }
 
 Write-Host "✅ Required files found" -ForegroundColor Green
+
+# メイン処理用の変数
+$testSuccess = $false
+$hostProcess = $null
+$notepad = $null
 
 try {
     # Step 1: ETWセッションクリーンアップ
@@ -185,3 +200,5 @@ if ($testSuccess) {
 Write-Host "===============================================" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "Test files are located at: $testRoot" -ForegroundColor Gray
+Write-Host ""
+Read-Host "Press Enter to exit"

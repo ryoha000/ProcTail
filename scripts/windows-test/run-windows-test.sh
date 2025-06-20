@@ -81,9 +81,21 @@ echo "A PowerShell window will open as Administrator..."
 echo "Please approve the UAC prompt when it appears."
 
 # 管理者権限でPowerShellテストスクリプトを実行
+echo "Starting PowerShell as Administrator..."
+echo "Please approve the UAC prompt when it appears."
+echo ""
+
+# PowerShellウィンドウを開いたままにするため、-NoExit を追加
 powershell.exe -Command "
-    Start-Process PowerShell -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& $WINDOWS_SCRIPTS_DIR\\run-test-final.ps1; Read-Host \\"Press Enter to exit\\"\"' -Verb RunAs
+    Start-Process PowerShell -ArgumentList '-NoExit -ExecutionPolicy RemoteSigned -Command \"try { & $WINDOWS_SCRIPTS_DIR\\run-test-final.ps1 } catch { Write-Host \\"Error: \$_\\" -ForegroundColor Red; Read-Host \\"Press Enter to exit\\" }\"' -Verb RunAs
 "
+
+echo ""
+echo "If the PowerShell window closed immediately, there might be an error."
+echo "You can manually run the test with:"
+echo "  Start PowerShell as Administrator"
+echo "  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force"
+echo "  & '$WINDOWS_SCRIPTS_DIR\\run-test-final.ps1'"
 
 echo
 echo "🎉 Test execution initiated!"
