@@ -1,4 +1,5 @@
-# ProcTail Windows Integration Test - Fixed Version
+# ProcTail Windows Integration Test
+# Host-CLI統合テスト：ETW監視、Named Pipe通信、ファイルI/Oイベント記録の検証
 param(
     [string]$Tag = "test-notepad",
     [switch]$SkipCleanup,
@@ -7,6 +8,7 @@ param(
 
 Write-Host "===============================================" -ForegroundColor Yellow
 Write-Host "   ProcTail Windows Integration Test" -ForegroundColor Yellow
+Write-Host "   Host-CLI連携テスト (ETW + Named Pipe)" -ForegroundColor Yellow
 Write-Host "===============================================" -ForegroundColor Yellow
 
 # Admin check
