@@ -33,17 +33,42 @@ fi
 
 echo "✅ Build completed successfully"
 
-# Step 2: Windows環境にファイルをコピー
+# Step 2: ETW cleanup before file operations
 echo
-echo "📋 Step 2: Copying files to Windows environment..."
+echo "🧹 Step 2: ETW cleanup to prevent file locks..."
+
+# First copy cleanup script to Windows and run it
+powershell.exe -Command "
+    if (-not (Test-Path '$WINDOWS_SCRIPTS_DIR')) { 
+        New-Item -ItemType Directory -Path '$WINDOWS_SCRIPTS_DIR' -Force | Out-Null 
+    }
+    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\scripts\\windows-test\\cleanup-etw.ps1' -Destination '$WINDOWS_SCRIPTS_DIR\\cleanup-etw.ps1' -Force
+"
+
+echo "Running ETW cleanup to stop any existing Host processes..."
+powershell.exe -Command "
+    try {
+        \$result = & '$WINDOWS_SCRIPTS_DIR\\cleanup-etw.ps1' -Silent
+        if (\$result) {
+            Write-Host 'ETW cleanup completed successfully' -ForegroundColor Green
+        } else {
+            Write-Host 'ETW cleanup completed with warnings' -ForegroundColor Yellow
+        }
+    }
+    catch {
+        Write-Host 'ETW cleanup failed, continuing...' -ForegroundColor Yellow
+    }
+"
+
+# Step 3: Windows環境にファイルをコピー
+echo
+echo "📋 Step 3: Copying files to Windows environment..."
 
 # Windows側のディレクトリを作成
 powershell.exe -Command "
     if (Test-Path '$WINDOWS_TEST_DIR') { Remove-Item -Recurse -Force '$WINDOWS_TEST_DIR' }
-    if (Test-Path '$WINDOWS_SCRIPTS_DIR') { Remove-Item -Recurse -Force '$WINDOWS_SCRIPTS_DIR' }
     New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/host' -Force | Out-Null
     New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/cli' -Force | Out-Null
-    New-Item -ItemType Directory -Path '$WINDOWS_SCRIPTS_DIR' -Force | Out-Null
 "
 
 # ビルド成果物をコピー
@@ -74,9 +99,9 @@ powershell.exe -Command "
 
 echo "✅ Files copied and configured successfully"
 
-# Step 3: PowerShellテストスクリプトを実行
+# Step 4: PowerShellテストスクリプトを実行
 echo
-echo "🧪 Step 3: Running Windows integration test..."
+echo "🧪 Step 4: Running Windows integration test..."
 echo "A PowerShell window will open as Administrator..."
 echo "Please approve the UAC prompt when it appears."
 
