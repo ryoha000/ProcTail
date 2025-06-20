@@ -648,9 +648,9 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _logger.LogTrace("FileIOイベントを受信: {EventName}, ProcessId: {ProcessId}, FileName: {FileName}", 
                 eventName, processId, fileName);
 
-            // イベント名を適切にフォーマット（FileIOCreate -> FileIO/Create）
+            // イベント名を適切にフォーマット
             var formattedEventName = eventName;
-            if (eventName.StartsWith("FileIO"))
+            if (eventName.StartsWith("FileIO") && !eventName.Contains("/"))
             {
                 formattedEventName = $"FileIO/{eventName.Substring(6)}"; // FileIOCreate -> FileIO/Create
             }
@@ -705,9 +705,9 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                 // プロセス終了イベント固有の処理
             }
 
-            // イベント名を適切にフォーマット（ProcessStart -> Process/Start）
+            // イベント名を適切にフォーマット
             var formattedEventName = eventName;
-            if (eventName.StartsWith("Process"))
+            if (eventName.StartsWith("Process") && !eventName.Contains("/"))
             {
                 formattedEventName = $"Process/{eventName.Substring(7)}"; // ProcessStart -> Process/Start
             }
