@@ -20,7 +20,7 @@ public class EventModelsTests
             ProcessId = 1234,
             ThreadId = 5678,
             ProviderName = "Microsoft-Windows-Kernel-FileIO",
-            EventName = "FileIo/Create",
+            EventName = "FileIO/Create",
             ActivityId = Guid.NewGuid(),
             RelatedActivityId = Guid.NewGuid(),
             Payload = new Dictionary<string, object> { { "test", "value" } },

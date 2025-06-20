@@ -25,14 +25,14 @@ public class TestEtwConfiguration : IEtwConfiguration
 {
     public IReadOnlyList<string> EnabledProviders { get; set; } = new List<string>
     {
-        "Microsoft-Windows-FileInfoMinifilter", 
+        "Microsoft-Windows-Kernel-FileIO", 
         "Microsoft-Windows-Kernel-Process"
     }.AsReadOnly();
     
     public IReadOnlyList<string> EnabledEventNames { get; set; } = new List<string>
     {
-        "FileIo/Create", "FileIo/Write", "FileIo/Delete", "FileIo/Rename",
-        "Process/Start", "Process/End"
+        "FileIO/Create", "FileIO/Write", "FileIO/Delete", "FileIO/Rename",
+        "Process/Start", "Process/End", "Process/Stop"
     }.AsReadOnly();
     
     public TimeSpan EventBufferTimeout { get; set; } = TimeSpan.FromSeconds(5);

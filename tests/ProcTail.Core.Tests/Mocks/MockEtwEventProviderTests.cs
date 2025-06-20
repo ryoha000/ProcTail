@@ -128,7 +128,7 @@ public class MockEtwEventProviderTests
         _provider.EventReceived += (sender, eventData) => 
         {
             // 期待するProcessIdとイベントタイプのイベントのみをキャプチャ
-            if (eventData.ProcessId == 1234 && eventData.EventName == "FileIo/Create")
+            if (eventData.ProcessId == 1234 && eventData.EventName == "FileIO/Create")
             {
                 receivedEvent = eventData;
                 targetEventReceived = true;
@@ -146,7 +146,7 @@ public class MockEtwEventProviderTests
         targetEventReceived.Should().BeTrue("期待するProcessIdとイベントタイプのイベントが受信されるべき");
         receivedEvent.Should().NotBeNull();
         receivedEvent!.ProviderName.Should().Be("Microsoft-Windows-Kernel-FileIO");
-        receivedEvent.EventName.Should().Be("FileIo/Create");
+        receivedEvent.EventName.Should().Be("FileIO/Create");
         receivedEvent.ProcessId.Should().Be(1234);
         receivedEvent.Payload.Should().ContainKey("FileName");
         receivedEvent.Payload["FileName"].Should().Be(@"C:\test.txt");

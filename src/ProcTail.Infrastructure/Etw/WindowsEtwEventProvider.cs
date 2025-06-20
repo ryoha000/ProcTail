@@ -631,8 +631,8 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             var processId = data.ProcessID;
             var payload = new Dictionary<string, object>();
             
-            _logger.LogTrace("RAW FileIOイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}", 
-                eventName, processId, data.ProviderName);
+            _logger.LogDebug("RAW FileIOイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}", 
+                eventName, processId, data.ProviderName, data.OpcodeName);
             
             // TraceEventからペイロード情報を取得
             for (int i = 0; i < data.PayloadNames.Length; i++)
@@ -648,10 +648,17 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _logger.LogTrace("FileIOイベントを受信: {EventName}, ProcessId: {ProcessId}, FileName: {FileName}", 
                 eventName, processId, fileName);
 
+            // イベント名を適切にフォーマット（FileIOCreate -> FileIO/Create）
+            var formattedEventName = eventName;
+            if (eventName.StartsWith("FileIO"))
+            {
+                formattedEventName = $"FileIO/{eventName.Substring(6)}"; // FileIOCreate -> FileIO/Create
+            }
+            
             var rawEvent = new RawEventData(
                 data.TimeStamp,
                 "Microsoft-Windows-Kernel-FileIO",
-                $"FileIO/{eventName}",
+                formattedEventName,
                 processId,
                 data.ThreadID,
                 data.ActivityID,
@@ -698,10 +705,17 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                 // プロセス終了イベント固有の処理
             }
 
+            // イベント名を適切にフォーマット（ProcessStart -> Process/Start）
+            var formattedEventName = eventName;
+            if (eventName.StartsWith("Process"))
+            {
+                formattedEventName = $"Process/{eventName.Substring(7)}"; // ProcessStart -> Process/Start
+            }
+            
             var rawEvent = new RawEventData(
                 data.TimeStamp,
                 "Microsoft-Windows-Kernel-Process",
-                eventName,
+                formattedEventName,
                 data.ProcessID,
                 data.ThreadID,
                 data.ActivityID,

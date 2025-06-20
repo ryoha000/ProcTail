@@ -29,7 +29,7 @@ public class EventProcessorTests
         _mockEtwConfiguration.Setup(x => x.EnabledProviders)
             .Returns(new[] { "Microsoft-Windows-Kernel-FileIO", "Microsoft-Windows-Kernel-Process" });
         _mockEtwConfiguration.Setup(x => x.EnabledEventNames)
-            .Returns(new[] { "FileIo/Create", "FileIo/Write", "Process/Start", "Process/End" });
+            .Returns(new[] { "FileIO/Create", "FileIO/Write", "Process/Start", "Process/End" });
 
         _processor = new EventProcessor(_mockLogger.Object, _mockWatchTargetManager.Object, _mockEtwConfiguration.Object);
     }
@@ -77,7 +77,7 @@ public class EventProcessorTests
         // Arrange
         var rawEvent = TestEventFactory.CreateRawEvent(
             "Microsoft-Windows-Kernel-FileIO",
-            "FileIo/Create",
+            "FileIO/Create",
             1234
         );
 
@@ -94,7 +94,7 @@ public class EventProcessorTests
         // Arrange
         var rawEvent = TestEventFactory.CreateRawEvent(
             "Disabled-Provider",
-            "FileIo/Create",
+            "FileIO/Create",
             1234
         );
 
@@ -111,7 +111,7 @@ public class EventProcessorTests
         // Arrange
         var rawEvent = TestEventFactory.CreateRawEvent(
             "Microsoft-Windows-Kernel-FileIO",
-            "FileIo/DisabledEvent",
+            "FileIO/DisabledEvent",
             1234
         );
 
@@ -150,7 +150,7 @@ public class EventProcessorTests
         // Arrange
         var rawEvent = TestEventFactory.CreateRawEvent(
             "Disabled-Provider",
-            "FileIo/Create",
+            "FileIO/Create",
             1234
         );
 
@@ -169,7 +169,7 @@ public class EventProcessorTests
         // Arrange
         var rawEvent = TestEventFactory.CreateRawEvent(
             "Microsoft-Windows-Kernel-FileIO",
-            "FileIo/Create",
+            "FileIO/Create",
             1234
         );
 
@@ -190,7 +190,7 @@ public class EventProcessorTests
         // Arrange
         var rawEvent = TestEventFactory.CreateRawEvent(
             "Microsoft-Windows-Kernel-FileIO",
-            "FileIo/Create",
+            "FileIO/Create",
             1234
         );
 
@@ -218,7 +218,7 @@ public class EventProcessorTests
 
         var rawEvent = TestEventFactory.CreateRawEvent(
             "Microsoft-Windows-Kernel-FileIO",
-            "FileIo/Create",
+            "FileIO/Create",
             1234,
             payload
         );
@@ -240,7 +240,7 @@ public class EventProcessorTests
         fileEvent.ProcessId.Should().Be(1234);
         fileEvent.FilePath.Should().Be(@"C:\test\file.txt");
         fileEvent.ProviderName.Should().Be("Microsoft-Windows-Kernel-FileIO");
-        fileEvent.EventName.Should().Be("FileIo/Create");
+        fileEvent.EventName.Should().Be("FileIO/Create");
     }
 
     [Test]
@@ -382,7 +382,7 @@ public class EventProcessorTests
 
         var rawEvent = TestEventFactory.CreateRawEvent(
             "Microsoft-Windows-Kernel-FileIO",
-            "FileIo/Create",
+            "FileIO/Create",
             1234,
             payload
         );

@@ -67,10 +67,13 @@ public class EtwConfiguration : IEtwConfiguration
         {
             "FileIO/Create",
             "FileIO/Write",
+            "FileIO/Read",
             "FileIO/Delete",
             "FileIO/Rename",
             "FileIO/SetInfo",
+            "FileIO/Close",
             "Process/Start",
+            "Process/Stop",
             "Process/End"
         };
         
@@ -249,7 +252,8 @@ public class EtwConfiguration : IEtwConfiguration
             "FileIO/SetInfo",
             "FileIO/Close",
             "Process/Start",
-            "Process/Stop"
+            "Process/Stop",
+            "Process/End"
         };
     }
 

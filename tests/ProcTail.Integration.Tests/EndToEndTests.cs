@@ -439,7 +439,7 @@ public class EndToEndTests
         return new RawEventData(
             DateTime.UtcNow,
             "Microsoft-Windows-Kernel-FileIO",
-            "FileIo/Create",
+            "FileIO/Create",
             processId,
             1000,
             Guid.NewGuid(),
