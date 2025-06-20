@@ -50,6 +50,10 @@ public class Program
             // Windows環境チェック
             Log.Information("ProcTail Host starting...");
             Log.Information("Command line args: {Args}", string.Join(" ", args));
+            Log.Information("Process ID: {ProcessId}", Environment.ProcessId);
+            Log.Information("Working directory: {WorkingDirectory}", Environment.CurrentDirectory);
+            Log.Information("Base directory: {BaseDirectory}", AppDomain.CurrentDomain.BaseDirectory);
+            Log.Information(".NET Runtime version: {RuntimeVersion}", RuntimeInformation.FrameworkDescription);
             
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
@@ -88,11 +92,20 @@ public class Program
 
             // ホストビルダーを作成して実行
             Log.Information("Creating host builder...");
-            var host = CreateHostBuilder(args).Build();
+            var hostBuilder = CreateHostBuilder(args);
+            Log.Information("Host builder created successfully");
             
+            Log.Information("Building host...");
+            var host = hostBuilder.Build();
             Log.Information("Host built successfully");
-            Log.Information("Starting host...");
-            await host.RunAsync();
+            
+            Log.Information("Starting host services...");
+            await host.StartAsync();
+            Log.Information("Host services started successfully");
+            
+            Log.Information("Running host (blocking call)...");
+            await host.WaitForShutdownAsync();
+            Log.Information("Host shutdown completed");
         }
         catch (Exception ex)
         {
