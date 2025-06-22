@@ -99,18 +99,8 @@ try {
     Write-Host "Debug: Host path = $hostPath" -ForegroundColor Gray
     Write-Host "Debug: Working directory = $hostDir" -ForegroundColor Gray
     Write-Host "Debug: File exists = $(Test-Path $hostPath)" -ForegroundColor Gray
-    
-    # Try to start Host with more detailed error handling
-    $psi = New-Object System.Diagnostics.ProcessStartInfo
-    $psi.FileName = $hostPath
-    $psi.WorkingDirectory = $hostDir
-    $psi.UseShellExecute = $false
-    $psi.RedirectStandardOutput = $true
-    $psi.RedirectStandardError = $true
-    $psi.CreateNoWindow = $true
-    
-    $hostProcess = [System.Diagnostics.Process]::Start($psi)
-    Write-Host "Host started with PID: $($hostProcess.Id)" -ForegroundColor Green
+
+    Start-Process $hostPath -Verb RunAs
     
     # Wait for initialization
     Write-Host "Waiting for Host initialization..." -ForegroundColor Gray

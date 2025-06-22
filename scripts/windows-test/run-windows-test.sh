@@ -46,17 +46,15 @@ powershell.exe -Command "
 "
 
 echo "Running ETW cleanup to stop any existing Host processes..."
+echo "This will request administrator privileges..."
 powershell.exe -Command "
     try {
-        \$result = & '$WINDOWS_SCRIPTS_DIR\\cleanup-etw.ps1' -Silent
-        if (\$result) {
-            Write-Host 'ETW cleanup completed successfully' -ForegroundColor Green
-        } else {
-            Write-Host 'ETW cleanup completed with warnings' -ForegroundColor Yellow
-        }
+        # Run cleanup with administrator privileges
+        Start-Process PowerShell -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& $WINDOWS_SCRIPTS_DIR\\cleanup-etw.ps1 -Silent; Start-Sleep 3\"' -Verb RunAs -Wait
+        Write-Host 'ETW cleanup completed' -ForegroundColor Green
     }
     catch {
-        Write-Host 'ETW cleanup failed, continuing...' -ForegroundColor Yellow
+        Write-Host 'ETW cleanup failed, some files may be locked during copy' -ForegroundColor Yellow
     }
 "
 
