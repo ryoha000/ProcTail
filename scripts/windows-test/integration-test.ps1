@@ -109,7 +109,14 @@ try {
     Write-Host "Debug: Working directory = $hostDir" -ForegroundColor Gray
     Write-Host "Debug: File exists = $(Test-Path $hostPath)" -ForegroundColor Gray
 
-    Start-Process $hostPath -Verb RunAs
+    # Create log files directory
+    $logDir = "C:/Temp/ProcTailTest/logs"
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
+
+    # Start Host process with admin privileges (output redirection not supported with RunAs)
+    $hostProcess = Start-Process $hostPath -WorkingDirectory $hostDir -Verb RunAs -PassThru
     
     # Wait for initialization
     Write-Host "Waiting for Host initialization..." -ForegroundColor Gray
@@ -169,7 +176,8 @@ try {
     
     Write-Host "Starting test-process for continuous file operations..." -ForegroundColor Gray
     $testProcessArgs = "-duration", "30s", "-interval", "2s", "-verbose", "-dir", $testFilesDir, "continuous"
-    $testProcess = Start-Process -FilePath $testProcessPath -ArgumentList $testProcessArgs -PassThru
+    $testProcessLogPath = "$logDir/test-process.log"
+    $testProcess = Start-Process -FilePath $testProcessPath -ArgumentList $testProcessArgs -RedirectStandardOutput $testProcessLogPath -RedirectStandardError $testProcessLogPath -PassThru
     $testProcessPid = $testProcess.Id
     Write-Host "test-process started with PID: $testProcessPid" -ForegroundColor Green
     
@@ -257,6 +265,54 @@ if ($events -and ($hasFileWrite -or $hasFileDelete)) {
     Write-Host "Raw events output: $events" -ForegroundColor Gray
     $testSuccess = $false
 }
+
+# Display log files for debugging
+Write-Host ""
+Write-Host "================= DEBUG LOGS =================" -ForegroundColor Cyan
+
+# Check test-process log
+if (Test-Path $testProcessLogPath) {
+    Write-Host ""
+    Write-Host "test-process log:" -ForegroundColor Yellow
+    Get-Content $testProcessLogPath | ForEach-Object { Write-Host $_ -ForegroundColor White }
+} else {
+    Write-Host "test-process log file not found: $testProcessLogPath" -ForegroundColor Red
+}
+
+# Check if test files were actually created
+Write-Host ""
+Write-Host "Files created in test directory:" -ForegroundColor Yellow
+if (Test-Path $testFilesDir) {
+    $testFiles = Get-ChildItem $testFilesDir -ErrorAction SilentlyContinue
+    if ($testFiles) {
+        $testFiles | ForEach-Object { Write-Host "  $($_.Name) ($(Get-Date $_.LastWriteTime))" -ForegroundColor White }
+    } else {
+        Write-Host "  No files found in test directory" -ForegroundColor Red
+    }
+} else {
+    Write-Host "  Test directory does not exist: $testFilesDir" -ForegroundColor Red
+}
+
+# Check Host process logs
+Write-Host ""
+Write-Host "ProcTail.Host logs:" -ForegroundColor Yellow
+$hostLogDir = "C:\ProcTail-Test-Logs"
+if (Test-Path $hostLogDir) {
+    $hostLogFiles = Get-ChildItem $hostLogDir -Filter "*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
+    if ($hostLogFiles) {
+        $latestLog = $hostLogFiles[0]
+        Write-Host "Latest Host log file: $($latestLog.Name)" -ForegroundColor Gray
+        Write-Host "--- Host Log Content (last 50 lines) ---" -ForegroundColor Gray
+        Get-Content $latestLog.FullName -Tail 50 | ForEach-Object { Write-Host $_ -ForegroundColor White }
+        Write-Host "--- End Host Log ---" -ForegroundColor Gray
+    } else {
+        Write-Host "  No log files found in $hostLogDir" -ForegroundColor Red
+    }
+} else {
+    Write-Host "  Host log directory not found: $hostLogDir" -ForegroundColor Red
+}
+
+Write-Host "=============================================" -ForegroundColor Cyan
 
 # Cleanup
 Write-Host ""
