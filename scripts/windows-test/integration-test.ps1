@@ -161,8 +161,14 @@ if (-not (Test-Path $testProcessPath)) {
 
 try {
     # Start test-process with continuous file operations for 30 seconds
+    # Use C:/Temp/ProcTailTest/TestFiles directory instead of system temp to avoid exclusion filters
+    $testFilesDir = "C:/Temp/ProcTailTest/TestFiles"
+    if (-not (Test-Path $testFilesDir)) {
+        New-Item -ItemType Directory -Path $testFilesDir -Force | Out-Null
+    }
+    
     Write-Host "Starting test-process for continuous file operations..." -ForegroundColor Gray
-    $testProcessArgs = "-duration", "30s", "-interval", "2s", "-verbose", "continuous"
+    $testProcessArgs = "-duration", "30s", "-interval", "2s", "-verbose", "-dir", $testFilesDir, "continuous"
     $testProcess = Start-Process -FilePath $testProcessPath -ArgumentList $testProcessArgs -PassThru
     $testProcessPid = $testProcess.Id
     Write-Host "test-process started with PID: $testProcessPid" -ForegroundColor Green

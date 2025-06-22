@@ -38,4 +38,20 @@ public class TestEtwConfiguration : IEtwConfiguration
     public TimeSpan EventBufferTimeout { get; set; } = TimeSpan.FromSeconds(5);
     public int BufferSizeMB { get; set; } = 64;
     public int BufferCount { get; set; } = 32;
+    public EtwFilteringOptions FilteringOptions { get; set; } = new()
+    {
+        ExcludeSystemProcesses = false,
+        MinimumProcessId = 0,
+        ExcludedProcessNames = Array.Empty<string>(),
+        IncludeFileExtensions = new[] { ".txt", ".log", ".exe", ".dll" },
+        ExcludeFilePatterns = Array.Empty<string>()
+    };
+    public EtwPerformanceOptions PerformanceOptions { get; set; } = new()
+    {
+        EventProcessingBatchSize = 100,
+        MaxEventQueueSize = 10000,
+        EventProcessingIntervalMs = 10,
+        EnableHighFrequencyEvents = false,
+        MaxEventsPerSecond = 1000
+    };
 }

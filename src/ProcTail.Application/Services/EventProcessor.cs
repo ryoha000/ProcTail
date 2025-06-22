@@ -13,6 +13,7 @@ public class EventProcessor : IEventProcessor
     private readonly IWatchTargetManager _watchTargetManager;
     private readonly IReadOnlyList<string> _enabledProviders;
     private readonly IReadOnlyList<string> _enabledEventNames;
+    private readonly EtwFilteringOptions _filteringOptions;
 
     /// <summary>
     /// コンストラクタ
@@ -31,6 +32,7 @@ public class EventProcessor : IEventProcessor
         var config = etwConfiguration ?? throw new ArgumentNullException(nameof(etwConfiguration));
         _enabledProviders = config.EnabledProviders;
         _enabledEventNames = config.EnabledEventNames;
+        _filteringOptions = config.FilteringOptions;
     }
 
     /// <summary>
@@ -117,7 +119,135 @@ public class EventProcessor : IEventProcessor
             return false;
         }
 
+        // ファイルパスフィルタリング（FileIOイベントの場合のみ）
+        if (rawEvent.ProviderName == "Microsoft-Windows-Kernel-FileIO" && rawEvent.EventName.StartsWith("FileIO/"))
+        {
+            if (!ShouldProcessFilePath(rawEvent))
+            {
+                return false;
+            }
+        }
+
         return true;
+    }
+
+    /// <summary>
+    /// ファイルパスのフィルタリング
+    /// </summary>
+    /// <param name="rawEvent">生ETWイベント</param>
+    /// <returns>処理すべき場合true</returns>
+    private bool ShouldProcessFilePath(RawEventData rawEvent)
+    {
+        // ファイルパスを取得
+        string? filePath = null;
+        if (rawEvent.Payload.TryGetValue("FileName", out var fileNameObj))
+        {
+            filePath = fileNameObj?.ToString();
+        }
+        else if (rawEvent.Payload.TryGetValue("FilePath", out var filePathObj))
+        {
+            filePath = filePathObj?.ToString();
+        }
+
+        if (string.IsNullOrEmpty(filePath))
+        {
+            _logger.LogDebug("ファイルパスが見つかりません (Event: {Event})", rawEvent.EventName);
+            return true; // ファイルパスが不明な場合は通す
+        }
+
+        // 拡張子チェック
+        if (_filteringOptions?.IncludeFileExtensions?.Count > 0)
+        {
+            var extension = Path.GetExtension(filePath);
+            if (!_filteringOptions.IncludeFileExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
+            {
+                _logger.LogDebug("除外対象の拡張子です (FilePath: {FilePath}, Extension: {Extension})", 
+                    filePath, extension);
+                return false;
+            }
+        }
+
+        // 除外パターンチェック
+        if (_filteringOptions?.ExcludeFilePatterns != null)
+        {
+            foreach (var pattern in _filteringOptions.ExcludeFilePatterns)
+            {
+                if (IsMatchPattern(filePath, pattern))
+                {
+                    _logger.LogDebug("除外パターンにマッチしました (FilePath: {FilePath}, Pattern: {Pattern})", 
+                        filePath, pattern);
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// ワイルドカードパターンマッチング
+    /// </summary>
+    /// <param name="input">入力文字列</param>
+    /// <param name="pattern">パターン</param>
+    /// <returns>マッチした場合true</returns>
+    private static bool IsMatchPattern(string input, string pattern)
+    {
+        // Windowsパスの大文字小文字を無視
+        input = input.ToUpperInvariant();
+        pattern = pattern.ToUpperInvariant();
+
+        // パスセパレータを正規化
+        input = input.Replace('/', '\\');
+        pattern = pattern.Replace('/', '\\');
+
+        // 簡単なワイルドカードマッチング
+        return IsWildcardMatch(input, pattern);
+    }
+
+    /// <summary>
+    /// ワイルドカード (*) を使った文字列マッチング
+    /// </summary>
+    /// <param name="input">入力文字列</param>
+    /// <param name="pattern">パターン（*を含む）</param>
+    /// <returns>マッチした場合true</returns>
+    private static bool IsWildcardMatch(string input, string pattern)
+    {
+        int inputIndex = 0;
+        int patternIndex = 0;
+        int inputBacktrack = -1;
+        int patternBacktrack = -1;
+
+        while (inputIndex < input.Length)
+        {
+            if (patternIndex < pattern.Length && pattern[patternIndex] == '*')
+            {
+                patternBacktrack = patternIndex++;
+                inputBacktrack = inputIndex;
+            }
+            else if (patternIndex < pattern.Length && 
+                     (pattern[patternIndex] == input[inputIndex] || pattern[patternIndex] == '?'))
+            {
+                patternIndex++;
+                inputIndex++;
+            }
+            else if (patternBacktrack != -1)
+            {
+                patternIndex = patternBacktrack + 1;
+                inputIndex = ++inputBacktrack;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        // パターンの残りが全て * かチェック
+        while (patternIndex < pattern.Length && pattern[patternIndex] == '*')
+        {
+            patternIndex++;
+        }
+
+        return patternIndex == pattern.Length;
     }
 
     /// <summary>

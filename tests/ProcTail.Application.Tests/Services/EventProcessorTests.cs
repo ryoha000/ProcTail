@@ -231,7 +231,7 @@ public class EventProcessorTests
 
         // Assert
         result.Should().NotBeNull();
-        result.Success.Should().BeTrue();
+        result.Success.Should().BeTrue($"Error: {result.ErrorMessage}");
         result.EventData.Should().NotBeNull();
         result.EventData.Should().BeOfType<FileEventData>();
 

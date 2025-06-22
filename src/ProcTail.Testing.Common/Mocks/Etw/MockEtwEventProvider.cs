@@ -215,4 +215,20 @@ public class MockEtwConfiguration : IEtwConfiguration
     public TimeSpan EventBufferTimeout => TimeSpan.FromMilliseconds(100);
     public int BufferSizeMB => 64;
     public int BufferCount => 20;
+    public EtwFilteringOptions FilteringOptions => new()
+    {
+        ExcludeSystemProcesses = false,
+        MinimumProcessId = 0,
+        ExcludedProcessNames = Array.Empty<string>(),
+        IncludeFileExtensions = new[] { ".txt", ".log", ".exe", ".dll" },
+        ExcludeFilePatterns = Array.Empty<string>()
+    };
+    public EtwPerformanceOptions PerformanceOptions => new()
+    {
+        EventProcessingBatchSize = 100,
+        MaxEventQueueSize = 10000,
+        EventProcessingIntervalMs = 10,
+        EnableHighFrequencyEvents = false,
+        MaxEventsPerSecond = 1000
+    };
 }
