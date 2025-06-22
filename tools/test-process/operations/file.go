@@ -22,6 +22,7 @@ type Config struct {
 	Interval time.Duration
 	Dir      string
 	Verbose  bool
+	Duration time.Duration
 }
 
 // ExecuteFileWrite performs file write operations
@@ -268,6 +269,80 @@ func ExecuteDirectoryOps(report FileReport) error {
 		if i < config.Count-1 {
 			time.Sleep(config.Interval / 2)
 		}
+	}
+
+	return nil
+}
+
+// ExecuteContinuous performs continuous file operations for specified duration
+func ExecuteContinuous(report FileReport) error {
+	config := report.GetConfig()
+	
+	if config.Duration <= 0 {
+		return fmt.Errorf("継続実行時間が設定されていません")
+	}
+	
+	if config.Verbose {
+		log.Printf("継続ファイル操作開始: %v間継続、間隔 %v", config.Duration, config.Interval)
+	}
+
+	startTime := time.Now()
+	endTime := startTime.Add(config.Duration)
+	operationCount := 0
+
+	// Start continuous operations
+	for time.Now().Before(endTime) {
+		// Perform a cycle of write -> read -> delete operations
+		fileName := fmt.Sprintf("continuous_%d_%d.txt", os.Getpid(), operationCount)
+		filePath := filepath.Join(config.Dir, fileName)
+		
+		content := fmt.Sprintf("Continuous operation %d\nTimestamp: %s\nProcess ID: %d\n", 
+			operationCount+1, time.Now().Format(time.RFC3339), os.Getpid())
+		
+		if config.Verbose {
+			log.Printf("継続操作 %d: ファイル作成 -> 読み込み -> 削除", operationCount+1)
+		}
+
+		// Write file
+		err := os.WriteFile(filePath, []byte(content), 0644)
+		if err != nil {
+			report.AddError(fmt.Errorf("継続書き込みエラー %s: %w", filePath, err))
+			report.IncrementFailed()
+		} else {
+			report.IncrementSuccess()
+			
+			// Read file
+			if _, err := os.ReadFile(filePath); err != nil {
+				report.AddError(fmt.Errorf("継続読み込みエラー %s: %w", filePath, err))
+				report.IncrementFailed()
+			} else {
+				report.IncrementSuccess()
+				
+				// Delete file
+				if err := os.Remove(filePath); err != nil {
+					report.AddError(fmt.Errorf("継続削除エラー %s: %w", filePath, err))
+					report.IncrementFailed()
+				} else {
+					report.IncrementSuccess()
+				}
+			}
+		}
+
+		operationCount++
+		
+		// Check if we should continue
+		if time.Now().Add(config.Interval).After(endTime) {
+			break
+		}
+		
+		time.Sleep(config.Interval)
+	}
+
+	report.SetTotalOps(operationCount * 3) // write + read + delete
+	
+	actualDuration := time.Since(startTime)
+	if config.Verbose {
+		log.Printf("継続操作完了: %d回のサイクル、実行時間 %v", operationCount, actualDuration)
 	}
 
 	return nil

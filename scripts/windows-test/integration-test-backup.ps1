@@ -1,16 +1,9 @@
 # ProcTail Windows Integration Test
 # Host-CLI統合テスト：ETW監視、Named Pipe通信、ファイルI/Oイベント記録の検証
 # test-processを使用した完全自動化テスト
-
-# パラメータ定義
 param(
-    [Parameter()]
     [string]$Tag = "test-process",
-    
-    [Parameter()]
     [switch]$SkipCleanup,
-    
-    [Parameter()]
     [switch]$KeepProcesses
 )
 

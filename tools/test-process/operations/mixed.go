@@ -25,6 +25,7 @@ type MixedConfig struct {
 	Verbose  bool
 	Command  string
 	Ops      []string
+	Duration time.Duration
 }
 
 // ExecuteMixed performs a combination of different operations
@@ -119,6 +120,7 @@ func (a *MixedReportAdapter) GetConfig() Config {
 		Interval: config.Interval,
 		Dir:      config.Dir,
 		Verbose:  config.Verbose,
+		Duration: config.Duration,
 	}
 }
 
@@ -130,6 +132,7 @@ func (a *MixedReportAdapter) GetProcessConfig() ProcessConfig {
 		Dir:      config.Dir,
 		Verbose:  config.Verbose,
 		Command:  config.Command,
+		Duration: config.Duration,
 	}
 }
 
