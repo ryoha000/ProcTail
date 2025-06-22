@@ -571,12 +571,12 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         // ファイルI/Oイベント
         session.Source.Kernel.FileIOCreate += OnFileIOEvent;
         session.Source.Kernel.FileIOWrite += OnFileIOEvent;
-        session.Source.Kernel.FileIORead += OnFileIOEvent;
+        // session.Source.Kernel.FileIORead += OnFileIOEvent; // 要件によりReadは無効化
         session.Source.Kernel.FileIODelete += OnFileIOEvent;
         session.Source.Kernel.FileIORename += OnFileIOEvent;
         session.Source.Kernel.FileIOSetInfo += OnFileIOEvent;
         session.Source.Kernel.FileIOClose += OnFileIOEvent;
-        _logger.LogDebug("FileIOイベントハンドラーを設定しました (Create, Write, Read, Delete, Rename, SetInfo, Close)");
+        _logger.LogDebug("FileIOイベントハンドラーを設定しました (Create, Write, Delete, Rename, SetInfo, Close)");
         
         // プロセスイベント
         session.Source.Kernel.ProcessStart += OnProcessEvent;
@@ -598,12 +598,12 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         {
             session.Source.Kernel.FileIOCreate += OnFileIOEvent;
             session.Source.Kernel.FileIOWrite += OnFileIOEvent;
-            session.Source.Kernel.FileIORead += OnFileIOEvent;
+            // session.Source.Kernel.FileIORead += OnFileIOEvent; // 要件によりReadは無効化
             session.Source.Kernel.FileIODelete += OnFileIOEvent;
             session.Source.Kernel.FileIORename += OnFileIOEvent;
             session.Source.Kernel.FileIOSetInfo += OnFileIOEvent;
             session.Source.Kernel.FileIOClose += OnFileIOEvent;
-            _logger.LogDebug("FileIOイベントハンドラーを設定しました (Create, Write, Read, Delete, Rename, SetInfo, Close)");
+            _logger.LogDebug("FileIOイベントハンドラーを設定しました (Create, Write, Delete, Rename, SetInfo, Close)");
         }
         
         // プロセスイベント
@@ -649,11 +649,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                 eventName, processId, fileName);
 
             // イベント名を適切にフォーマット
-            var formattedEventName = eventName;
-            if (eventName.StartsWith("FileIO") && !eventName.Contains("/"))
-            {
-                formattedEventName = $"FileIO/{eventName.Substring(6)}"; // FileIOCreate -> FileIO/Create
-            }
+            var formattedEventName = FormatEventName(eventName, "FileIO");
             
             var rawEvent = new RawEventData(
                 data.TimeStamp,
@@ -706,11 +702,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             }
 
             // イベント名を適切にフォーマット
-            var formattedEventName = eventName;
-            if (eventName.StartsWith("Process") && !eventName.Contains("/"))
-            {
-                formattedEventName = $"Process/{eventName.Substring(7)}"; // ProcessStart -> Process/Start
-            }
+            var formattedEventName = FormatEventName(eventName, "Process");
             
             var rawEvent = new RawEventData(
                 data.TimeStamp,
@@ -866,6 +858,31 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
 
         _cancellationTokenSource.Dispose();
         _logger.LogInformation("WindowsEtwEventProviderが解放されました");
+    }
+
+    /// <summary>
+    /// ETWイベント名を一貫した形式にフォーマット
+    /// </summary>
+    /// <param name="eventName">元のイベント名</param>
+    /// <param name="prefix">プレフィックス（FileIO, Process等）</param>
+    /// <returns>フォーマットされたイベント名</returns>
+    private static string FormatEventName(string eventName, string prefix)
+    {
+        // 既に正しい形式の場合はそのまま返す
+        if (eventName.Contains("/"))
+        {
+            return eventName;
+        }
+
+        // プレフィックスで始まる場合はスラッシュ形式に変換
+        if (eventName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            var suffix = eventName.Substring(prefix.Length);
+            return $"{prefix}/{suffix}";
+        }
+
+        // プレフィックスがない場合はそのまま返す
+        return eventName;
     }
 }
 

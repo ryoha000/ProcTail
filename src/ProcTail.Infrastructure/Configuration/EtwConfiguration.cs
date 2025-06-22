@@ -67,7 +67,7 @@ public class EtwConfiguration : IEtwConfiguration
         {
             "FileIO/Create",
             "FileIO/Write",
-            "FileIO/Read",
+            // "FileIO/Read", // 要件によりReadは無効化
             "FileIO/Delete",
             "FileIO/Rename",
             "FileIO/SetInfo",
@@ -91,8 +91,8 @@ public class EtwConfiguration : IEtwConfiguration
             }.AsReadOnly(),
             ExcludeFilePatterns = new[]
             {
-                "C:\\Windows\\System32\\*",
-                "*\\Temp\\*"
+                "C:\\Windows\\System32\\*"
+                // "*\\Temp\\*" // test-processのファイル操作を許可するためコメントアウト
             }.AsReadOnly()
         };
         
@@ -246,7 +246,7 @@ public class EtwConfiguration : IEtwConfiguration
         {
             "FileIO/Create",
             "FileIO/Write", 
-            "FileIO/Read",
+            // "FileIO/Read", // 要件によりReadは無効化
             "FileIO/Delete",
             "FileIO/Rename",
             "FileIO/SetInfo",
@@ -303,7 +303,7 @@ public class EtwConfiguration : IEtwConfiguration
             @"C:\Windows\SysWOW64\*",
             @"C:\Windows\WinSxS\*",
             @"C:\Program Files\Windows Defender\*",
-            @"*\Temp\*",
+            // @"*\Temp\*", // test-processのファイル操作を許可するためコメントアウト
             @"*\$Recycle.Bin\*",
             @"*\.git\*",
             @"*\node_modules\*"

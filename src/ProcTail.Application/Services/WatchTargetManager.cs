@@ -72,8 +72,12 @@ public class WatchTargetManager : IWatchTargetManager, IDisposable
                     processSet.Add(processId);
                 }
 
-                _logger.LogInformation("監視対象を追加しました (ProcessId: {ProcessId}, Tag: {TagName})", 
-                    processId, tagName);
+                _logger.LogInformation("監視対象を追加しました (ProcessId: {ProcessId}, Tag: {TagName}, TotalTargets: {TotalTargets})", 
+                    processId, tagName, _watchTargets.Count);
+                    
+                // デバッグ用に内部状態をログ出力
+                _logger.LogTrace("監視対象追加後の状態: WatchTargets.Count={WatchTargetsCount}, TagToProcessMap.Count={TagMapCount}", 
+                    _watchTargets.Count, _tagToProcessMap.Count);
                 return Task.FromResult(true);
             }
             else
@@ -240,7 +244,27 @@ public class WatchTargetManager : IWatchTargetManager, IDisposable
     /// <returns>監視対象の場合true</returns>
     public bool IsWatchedProcess(int processId)
     {
-        return _watchTargets.ContainsKey(processId);
+        var isWatched = _watchTargets.ContainsKey(processId);
+        
+        // デバッグ用に詳細情報をログ出力
+        if (isWatched)
+        {
+            var tag = _watchTargets.TryGetValue(processId, out var target) ? target.TagName : "Unknown";
+            _logger.LogTrace("監視対象プロセスです: ProcessId={ProcessId}, Tag={Tag}", processId, tag);
+        }
+        else
+        {
+            _logger.LogTrace("監視対象外のプロセスです: ProcessId={ProcessId}, TotalWatchTargets={TotalTargets}", 
+                processId, _watchTargets.Count);
+                
+            if (_watchTargets.Count > 0)
+            {
+                var watchedPids = _watchTargets.Keys.Take(5).ToArray();
+                _logger.LogTrace("現在の監視対象PID一覧（最大5件）: [{WatchedPids}]", string.Join(", ", watchedPids));
+            }
+        }
+        
+        return isWatched;
     }
 
     /// <summary>
