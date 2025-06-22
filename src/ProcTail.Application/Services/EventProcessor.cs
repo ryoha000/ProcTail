@@ -530,8 +530,8 @@ public class EventProcessor : IEventProcessor
                 kvp.Key, kvp.Value, kvp.Value?.GetType().Name ?? "null");
         }
 
-        // ETWイベントの一般的なファイルパスフィールド名
-        var filePathKeys = new[] { "FileName", "OpenPath", "FilePath", "Name", "FileObject", "FileKey" };
+        // ETWイベントの一般的なファイルパスフィールド名（FileObjectはパスではないので最後）
+        var filePathKeys = new[] { "FileName", "OpenPath", "FilePath", "Name", "FileKey" };
 
         foreach (var key in filePathKeys)
         {
@@ -543,15 +543,13 @@ public class EventProcessor : IEventProcessor
         }
 
         // FileIO/Closeイベントではファイルパスが直接含まれない場合があるため、
-        // FileObject IDやファイルハンドルから推測を試行
+        // これを許容する（FileObjectはファイルパスではないのでスキップ）
         if (payload.TryGetValue("FileObject", out var fileObjValue))
         {
-            _logger.LogTrace("Found FileObject: {FileObject}, but no file path available", fileObjValue);
-            // FileIO/Closeの場合は、ファイルパスがないことを許容し、代替文字列を返す
-            return $"<FileObject:{fileObjValue}>";
+            _logger.LogTrace("FileObjectが見つかりましたが、ファイルパスではありません: {FileObject}", fileObjValue);
         }
 
-        _logger.LogTrace("No file path found in payload");
+        _logger.LogTrace("ペイロードにファイルパスが見つかりません");
         return string.Empty;
     }
 
