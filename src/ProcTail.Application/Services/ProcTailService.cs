@@ -324,7 +324,19 @@ public class ProcTailService : IProcTailService, IDisposable
             var processId = request.RootElement.GetProperty("ProcessId").GetInt32();
             var tagName = request.RootElement.GetProperty("TagName").GetString() ?? string.Empty;
 
-            var success = await AddWatchTargetAsync(processId, tagName, cancellationToken);
+            var success = await _watchTargetManager.AddTargetAsync(processId, tagName);
+
+            // 追加直後に確認
+            if (success)
+            {
+                var isWatched = _watchTargetManager.IsWatchedProcess(processId);
+                _logger.LogInformation("監視対象追加後の確認: ProcessId={ProcessId}, IsWatched={IsWatched}", processId, isWatched);
+                
+                if (!isWatched)
+                {
+                    _logger.LogError("監視対象追加に成功したが、直後の確認で見つかりません: ProcessId={ProcessId}", processId);
+                }
+            }
 
             var response = new AddWatchTargetResponse
             {

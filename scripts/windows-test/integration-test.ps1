@@ -190,6 +190,11 @@ try {
         Write-Host "Adding test-process to monitoring..." -ForegroundColor Gray
         $addResult = & $cliPath add --pid $testProcessPid --tag $Tag 2>&1
         Write-Host "Add result: $addResult" -ForegroundColor Gray
+        
+        # Verify the addition was successful
+        Start-Sleep -Seconds 1
+        $listResult = & $cliPath list 2>&1
+        Write-Host "Watch targets after addition: $listResult" -ForegroundColor Gray
     } else {
         Write-Host "ERROR: Failed to start test-process" -ForegroundColor Red
         $testProcessPid = $null
@@ -264,10 +269,31 @@ Write-Host "==========================================" -ForegroundColor Yellow
 # Check if events were captured
 $eventString = $events.ToString()
 $hasFileWrite = $eventString.Contains("FileIO") -and $eventString.Contains("Write")
-$hasFileDelete = $eventString.Contains("FileIO") -and $eventString.Contains("Delete")
+$hasFileDelete = $eventString.Contains("FileIO") -and $eventString.Contains("Delete") 
+$hasFileCreate = $eventString.Contains("FileIO") -and $eventString.Contains("Create")
+$hasTestProcessFiles = $eventString.Contains("continuous_$testProcessPid") -or $eventString.Contains("TestFiles")
 
-if ($events -and ($hasFileWrite -or $hasFileDelete)) {
-    Write-Host "File events detected successfully!" -ForegroundColor Green
+Write-Host ""
+Write-Host "================= EVENT ANALYSIS =================" -ForegroundColor Cyan
+Write-Host "Events from test-process PID $testProcessPid analysis:" -ForegroundColor White
+Write-Host "• FileIO/Create events: $(if ($hasFileCreate) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileCreate) { 'Green' } else { 'Red' })
+Write-Host "• FileIO/Write events: $(if ($hasFileWrite) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileWrite) { 'Green' } else { 'Red' })
+Write-Host "• FileIO/Delete events: $(if ($hasFileDelete) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileDelete) { 'Green' } else { 'Red' })
+Write-Host "• Test-process files: $(if ($hasTestProcessFiles) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasTestProcessFiles) { 'Green' } else { 'Red' })
+
+# Count total events for this test process
+$eventLines = $eventString -split "`n"
+$testProcessEvents = $eventLines | Where-Object { $_ -match "^\s*\|\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*\|\s*$testProcessPid\s*\|" }
+$testProcessEventCount = ($testProcessEvents | Measure-Object).Count
+
+Write-Host "• Total events for PID $testProcessPid`: $testProcessEventCount" -ForegroundColor White
+Write-Host "=================================================" -ForegroundColor Cyan
+
+if ($events -and ($hasFileWrite -or $hasFileDelete -or $hasFileCreate) -and $hasTestProcessFiles) {
+    Write-Host "✅ File events detected successfully!" -ForegroundColor Green
+    if ($hasFileCreate) {
+        Write-Host "✓ Create events detected" -ForegroundColor Green
+    }
     if ($hasFileWrite) {
         Write-Host "✓ Write events detected" -ForegroundColor Green
     }
@@ -276,9 +302,17 @@ if ($events -and ($hasFileWrite -or $hasFileDelete)) {
     }
     $testSuccess = $true
 } else {
-    Write-Host "No expected file events detected" -ForegroundColor Yellow
-    Write-Host "This might indicate a filtering or monitoring issue" -ForegroundColor Gray
-    Write-Host "Raw events output: $events" -ForegroundColor Gray
+    Write-Host "❌ Expected file events not detected" -ForegroundColor Red
+    Write-Host "This indicates a monitoring or filtering issue" -ForegroundColor Yellow
+    
+    # Additional diagnostic information
+    if ($testProcessEventCount -eq 0) {
+        Write-Host "⚠️  No events found for test-process PID $testProcessPid" -ForegroundColor Yellow
+        Write-Host "   This suggests the process monitoring registration failed" -ForegroundColor Gray
+    } else {
+        Write-Host "ℹ️  Found $testProcessEventCount events for PID $testProcessPid but they don't match expected file operations" -ForegroundColor Yellow
+    }
+    
     $testSuccess = $false
 }
 

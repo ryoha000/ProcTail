@@ -260,7 +260,8 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _logger.LogTrace("ファイルI/O監視を有効化中...");
             session.EnableKernelProvider(
                 KernelTraceEventParser.Keywords.FileIO | 
-                KernelTraceEventParser.Keywords.Process);  // FileIOとProcessを有効化
+                KernelTraceEventParser.Keywords.FileIOInit |
+                KernelTraceEventParser.Keywords.Process);  // FileIO、FileIOInit、Processを有効化
             
             _logger.LogInformation("カーネルプロバイダーを有効にしました (FileIO + Process)");
             
@@ -634,6 +635,13 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _logger.LogDebug("RAW FileIOイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}", 
                 eventName, processId, data.ProviderName, data.OpcodeName);
             
+            // test-processからのイベントかチェック
+            if (processId == 70412 || IsTestProcess(processId))
+            {
+                _logger.LogWarning("TEST-PROCESS FileIOイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}, TaskName={TaskName}", 
+                    eventName, processId, data.ProviderName, data.OpcodeName, data.TaskName);
+            }
+            
             // TraceEventからペイロード情報を取得
             for (int i = 0; i < data.PayloadNames.Length; i++)
             {
@@ -653,7 +661,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             
             var rawEvent = new RawEventData(
                 data.TimeStamp,
-                "Microsoft-Windows-Kernel-FileIO",
+                data.ProviderName, // 実際のプロバイダー名を使用
                 formattedEventName,
                 processId,
                 data.ThreadID,
@@ -706,7 +714,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             
             var rawEvent = new RawEventData(
                 data.TimeStamp,
-                "Microsoft-Windows-Kernel-Process",
+                data.ProviderName, // 実際のプロバイダー名を使用
                 formattedEventName,
                 data.ProcessID,
                 data.ThreadID,
@@ -883,6 +891,26 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
 
         // プレフィックスがない場合はそのまま返す
         return eventName;
+    }
+
+    /// <summary>
+    /// test-processかどうかを判定するヘルパーメソッド
+    /// </summary>
+    /// <param name="processId">プロセスID</param>
+    /// <returns>test-processの場合true</returns>
+    private bool IsTestProcess(int processId)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(processId);
+            var processName = process.ProcessName;
+            return processName.Contains("test-process", StringComparison.OrdinalIgnoreCase) ||
+                   processName.Contains("proctail_test", StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
+        }
     }
 }
 

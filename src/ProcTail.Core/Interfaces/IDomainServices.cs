@@ -8,6 +8,11 @@ namespace ProcTail.Core.Interfaces;
 public interface IWatchTargetManager
 {
     /// <summary>
+    /// 監視中の対象数
+    /// </summary>
+    int ActiveTargetCount { get; }
+
+    /// <summary>
     /// 監視対象を追加
     /// </summary>
     /// <param name="processId">プロセスID</param>

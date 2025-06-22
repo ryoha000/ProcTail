@@ -63,8 +63,25 @@ public class EventProcessor : IEventProcessor
             // 監視対象プロセスかチェック
             if (!_watchTargetManager.IsWatchedProcess(rawEvent.ProcessId))
             {
-                _logger.LogDebug("監視対象外のプロセスです (ProcessId: {ProcessId}, Provider: {Provider}, Event: {Event})", 
-                    rawEvent.ProcessId, rawEvent.ProviderName, rawEvent.EventName);
+                _logger.LogDebug("監視対象外のプロセスです (ProcessId: {ProcessId}, Provider: {Provider}, Event: {Event}, TotalWatchTargets: {TotalTargets})", 
+                    rawEvent.ProcessId, rawEvent.ProviderName, rawEvent.EventName, _watchTargetManager.ActiveTargetCount);
+                
+                // より詳細なデバッグ情報を追加（特にtest-processの場合）
+                if (_watchTargetManager.ActiveTargetCount > 0)
+                {
+                    var watchTargets = _watchTargetManager.GetWatchTargets();
+                    var watchedPids = string.Join(", ", watchTargets.Select(t => $"{t.ProcessId}({t.TagName})"));
+                    _logger.LogDebug("現在の監視対象: [{WatchedTargets}]", watchedPids);
+                    
+                    // test-processの場合、より詳細なログ
+                    var testProcessTarget = watchTargets.FirstOrDefault(t => t.TagName == "test-process");
+                    if (testProcessTarget != null)
+                    {
+                        _logger.LogWarning("test-processが監視対象に登録されているが、受信イベントはPID={EventPid}、登録済みPID={RegisteredPid}", 
+                            rawEvent.ProcessId, testProcessTarget.ProcessId);
+                    }
+                }
+                
                 return new ProcessingResult(false, ErrorMessage: "Process not watched");
             }
 
@@ -121,7 +138,7 @@ public class EventProcessor : IEventProcessor
         }
 
         // ファイルパスフィルタリング（FileIOイベントの場合のみ）
-        if (rawEvent.ProviderName == "Microsoft-Windows-Kernel-FileIO" && rawEvent.EventName.StartsWith("FileIO/"))
+        if (rawEvent.ProviderName == "Windows Kernel" && rawEvent.EventName.StartsWith("FileIO/"))
         {
             if (!ShouldProcessFilePath(rawEvent))
             {
@@ -288,8 +305,8 @@ public class EventProcessor : IEventProcessor
             // プロバイダーとイベント名に基づいて適切な型に変換
             return rawEvent.ProviderName switch
             {
-                "Microsoft-Windows-Kernel-FileIO" => await ConvertFileEventAsync(rawEvent, baseProperties),
-                "Microsoft-Windows-Kernel-Process" => await ConvertProcessEventAsync(rawEvent, baseProperties),
+                "Windows Kernel" when rawEvent.EventName.StartsWith("FileIO/") => await ConvertFileEventAsync(rawEvent, baseProperties),
+                "Windows Kernel" when rawEvent.EventName.StartsWith("Process/") => await ConvertProcessEventAsync(rawEvent, baseProperties),
                 _ => new GenericEventData
                 {
                     Timestamp = baseProperties.Timestamp,

@@ -250,17 +250,17 @@ public class WatchTargetManager : IWatchTargetManager, IDisposable
         if (isWatched)
         {
             var tag = _watchTargets.TryGetValue(processId, out var target) ? target.TagName : "Unknown";
-            _logger.LogTrace("監視対象プロセスです: ProcessId={ProcessId}, Tag={Tag}", processId, tag);
+            _logger.LogDebug("監視対象プロセスです: ProcessId={ProcessId}, Tag={Tag}", processId, tag);
         }
         else
         {
-            _logger.LogTrace("監視対象外のプロセスです: ProcessId={ProcessId}, TotalWatchTargets={TotalTargets}", 
+            _logger.LogDebug("監視対象外のプロセスです: ProcessId={ProcessId}, TotalWatchTargets={TotalTargets}", 
                 processId, _watchTargets.Count);
                 
             if (_watchTargets.Count > 0)
             {
                 var watchedPids = _watchTargets.Keys.Take(5).ToArray();
-                _logger.LogTrace("現在の監視対象PID一覧（最大5件）: [{WatchedPids}]", string.Join(", ", watchedPids));
+                _logger.LogDebug("現在の監視対象PID一覧（最大5件）: [{WatchedPids}]", string.Join(", ", watchedPids));
             }
         }
         
