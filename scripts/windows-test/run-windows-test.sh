@@ -23,11 +23,12 @@ echo
 echo "🔨 Step 1: Building project..."
 cd "$PROJECT_ROOT"
 
-echo "Building in Release configuration..."
-dotnet build --configuration Release
+echo "Publishing in Release configuration..."
+dotnet publish src/ProcTail.Host/ProcTail.Host.csproj --configuration Release --output "$PROJECT_ROOT/publish/host"
+dotnet publish src/ProcTail.Cli/ProcTail.Cli.csproj --configuration Release --output "$PROJECT_ROOT/publish/cli"
 
 if [ $? -ne 0 ]; then
-    echo "❌ Build failed"
+    echo "❌ Publish failed"
     exit 1
 fi
 
@@ -83,12 +84,12 @@ powershell.exe -Command "
 # ビルド成果物をコピー
 echo "Copying Host binaries..."
 powershell.exe -Command "
-    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\src\\ProcTail.Host\\bin\\Release\\net8.0\\*' -Destination '$WINDOWS_TEST_DIR/host' -Recurse -Force
+    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\host\\*' -Destination '$WINDOWS_TEST_DIR/host' -Recurse -Force
 "
 
 echo "Copying CLI binaries..."
 powershell.exe -Command "
-    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\src\\ProcTail.Cli\\bin\\Release\\net8.0\\*' -Destination '$WINDOWS_TEST_DIR/cli' -Recurse -Force
+    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\cli\\*' -Destination '$WINDOWS_TEST_DIR/cli' -Recurse -Force
 "
 
 echo "Copying test-process.exe..."
