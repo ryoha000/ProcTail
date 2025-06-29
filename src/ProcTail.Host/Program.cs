@@ -29,21 +29,20 @@ public class Program
     public static async Task Main(string[] args)
     {
         // 早期ログ設定（Console出力のみ）
-        var logDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+        var timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
+        var logDirectory = Path.Combine(@"C:\Temp\ProcTailTest\logs", timestamp);
         Directory.CreateDirectory(logDirectory);
-        
-        // Create debug log directory
-        var debugLogDirectory = @"C:\ProcTail-Test-Logs";
-        Directory.CreateDirectory(debugLogDirectory);
 
         // Configure Serilog early
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
             .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
-            .WriteTo.File(Path.Combine(debugLogDirectory, "host-.log"), 
-                rollingInterval: RollingInterval.Day,
+            .WriteTo.File(Path.Combine(logDirectory, "host.log"), 
                 outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} {Level:u3}] {Message:lj}{NewLine}{Exception}")
             .CreateLogger();
+        
+        // Log the timestamp directory for reference
+        Log.Information("Log directory: {LogDirectory}", logDirectory);
 
         try
         {

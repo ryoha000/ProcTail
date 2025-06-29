@@ -109,11 +109,13 @@ try {
     Write-Host "Debug: Working directory = $hostDir" -ForegroundColor Gray
     Write-Host "Debug: File exists = $(Test-Path $hostPath)" -ForegroundColor Gray
 
-    # Create log files directory
-    $logDir = "C:/Temp/ProcTailTest/logs"
+    # Create log files directory with timestamp
+    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+    $logDir = "C:/Temp/ProcTailTest/logs/$timestamp"
     if (-not (Test-Path $logDir)) {
         New-Item -ItemType Directory -Path $logDir -Force | Out-Null
     }
+    Write-Host "Log directory: $logDir" -ForegroundColor Gray
 
     # Start Host process with admin privileges (output redirection not supported with RunAs)
     $hostProcess = Start-Process $hostPath -WorkingDirectory $hostDir -Verb RunAs -PassThru
@@ -378,20 +380,23 @@ if ($testProcessPid) {
 # Check Host process logs
 Write-Host ""
 Write-Host "ProcTail.Host logs:" -ForegroundColor Yellow
-$hostLogDir = "C:\ProcTail-Test-Logs"
-if (Test-Path $hostLogDir) {
-    $hostLogFiles = Get-ChildItem $hostLogDir -Filter "*.log" -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending
-    if ($hostLogFiles) {
-        $latestLog = $hostLogFiles[0]
-        Write-Host "Latest Host log file: $($latestLog.Name)" -ForegroundColor Gray
-        Write-Host "--- Host Log Content (last 50 lines) ---" -ForegroundColor Gray
-        Get-Content $latestLog.FullName -Tail 50 | ForEach-Object { Write-Host $_ -ForegroundColor White }
-        Write-Host "--- End Host Log ---" -ForegroundColor Gray
-    } else {
-        Write-Host "  No log files found in $hostLogDir" -ForegroundColor Red
-    }
+$hostLogPath = "$logDir/host.log"
+if (Test-Path $hostLogPath) {
+    Write-Host "Host log file: $hostLogPath" -ForegroundColor Gray
+    Write-Host "--- Host Log Content (last 50 lines) ---" -ForegroundColor Gray
+    Get-Content $hostLogPath -Tail 50 | ForEach-Object { Write-Host $_ -ForegroundColor White }
+    Write-Host "--- End Host Log ---" -ForegroundColor Gray
 } else {
-    Write-Host "  Host log directory not found: $hostLogDir" -ForegroundColor Red
+    Write-Host "  Host log file not found: $hostLogPath" -ForegroundColor Red
+    Write-Host "  Checking for any log directories..." -ForegroundColor Yellow
+    $parentLogDir = "C:/Temp/ProcTailTest/logs"
+    if (Test-Path $parentLogDir) {
+        $logDirs = Get-ChildItem $parentLogDir -Directory | Sort-Object Name -Descending
+        if ($logDirs) {
+            Write-Host "  Found log directories:" -ForegroundColor Yellow
+            $logDirs | Select-Object -First 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
+        }
+    }
 }
 
 Write-Host "=============================================" -ForegroundColor Cyan

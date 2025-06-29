@@ -4,7 +4,7 @@
 
 ## 概要
 
-ProcTailは、ETW (Event Tracing for Windows) を使用してプロセスのファイル操作を監視するWindowsワーカーサービスです。これらのテストスクリプトは、実際のWindows環境でHostプロセスとCLIの連携動作を検証します。
+ProcTailは、ETW (Event Tracing for Windows) を使用してプロセスのファイル操作とプロセスイベントを監視するWindowsワーカーサービスです。これらのテストスクリプトは、実際のWindows環境でHostプロセスとCLIの連携動作を検証します。
 
 ## 前提条件
 
@@ -12,6 +12,7 @@ ProcTailは、ETW (Event Tracing for Windows) を使用してプロセスのフ�
 - **.NET 8 Runtime**
 - **PowerShell 5.1以上**
 - **WSL** (メインスクリプト実行用)
+- **Go** (test-process.exeのビルド用)
 
 ## テストスクリプト構成
 
@@ -24,8 +25,8 @@ ProcTailは、ETW (Event Tracing for Windows) を使用してプロセスのフ�
 
 - **`integration-test.ps1`** - PowerShell統合テストスクリプト
   - Hostプロセスの起動
-  - Notepadプロセスの監視
-  - ファイル操作イベントの記録テスト
+  - test-process.exeを使用した自動テスト
+  - ファイル操作イベントの記録と検証
 
 ### 診断・ユーティリティスクリプト
 
@@ -53,9 +54,10 @@ WSL環境から実行：
 
 このスクリプトは以下を自動実行します：
 1. プロジェクトのReleaseビルド
-2. ETWクリーンアップ（既存のHostプロセス停止とファイルロック解除）
-3. バイナリファイルのWindows環境 (`C:/Temp/ProcTailTest/`) へのコピー
-4. 管理者権限PowerShellでの統合テスト実行
+2. test-process.exeのビルド (Go言語)
+3. ETWクリーンアップ（既存のHostプロセス停止とファイルロック解除）
+4. バイナリファイルのWindows環境 (`C:/Temp/ProcTailTest/`) へのコピー
+5. 管理者権限PowerShellでの統合テスト実行
 
 ### 2. 手動テスト
 
@@ -71,9 +73,9 @@ Start-Process 'C:/Temp/ProcTailTest/host/win-x64/ProcTail.Host.exe' -WorkingDire
 # CLIでのステータス確認
 & 'C:/Temp/ProcTailTest/cli/win-x64/proctail.exe' status
 
-# プロセス監視の追加
-$notepad = Start-Process notepad.exe -PassThru
-& 'C:/Temp/ProcTailTest/cli/win-x64/proctail.exe' add --pid $notepad.Id --tag "test"
+# test-processを使用したテスト
+$testProcess = Start-Process 'C:/Temp/ProcTailTest/tools/test-process.exe' -ArgumentList "-duration", "30s", "-interval", "2s", "-verbose", "-dir", "C:/Temp/ProcTailTest/TestFiles", "continuous" -PassThru
+& 'C:/Temp/ProcTailTest/cli/win-x64/proctail.exe' add --pid $testProcess.Id --tag "test"
 
 # イベント確認
 & 'C:/Temp/ProcTailTest/cli/win-x64/proctail.exe' events --tag "test"
@@ -114,12 +116,12 @@ ETWセッションが競合している場合や、テスト環境をリセッ�
    - Named Pipeサーバーの初期化確認
 
 4. **監視対象追加**
-   - Notepadプロセスの起動
+   - test-process.exeの起動
    - 監視対象としての登録
 
-5. **ファイル操作テスト**
-   - Notepadでのファイル保存操作（手動）
-   - ファイルI/Oイベントの記録確認
+5. **自動ファイル操作テスト**
+   - test-processによる連続的なファイル操作（作成、書き込み、削除）
+   - ファイルI/Oイベントの自動記録と検証
 
 6. **最終クリーンアップ**
    - プロセス停止
@@ -175,9 +177,14 @@ ETWセッションが競合している場合や、テスト環境をリセッ�
 
 テスト実行時のログは以下の場所に保存されます：
 
-- **Host実行ログ**: `C:/ProcTail-Test-Logs/host-[日時].log`
+各テスト実行ごとに `C:/Temp/ProcTailTest/logs/{yyyyMMddHHmmss}/` ディレクトリが作成され、以下のログファイルが保存されます：
+
+- **host.log**: ProcTail Hostプロセスのログ
+- **test-process.log**: test-processの標準出力
+- **test-process-error.log**: test-processのエラー出力
+
+診断用のログ：
 - **診断ログ**: `C:/ProcTail-Test-Logs/host-startup-[日時].log`
-- **クリーンテストログ**: `C:/CleanProcTail-Logs/clean-host-test-[日時].log`
 
 ## 設定情報
 
@@ -191,11 +198,18 @@ C:/Temp/ProcTailTest/
 │   │   ├── ProcTail.*.dll
 │   │   └── ...
 │   └── appsettings.json
-└── cli/
-    └── win-x64/
-        ├── proctail.exe
-        ├── ProcTail.Core.dll
-        └── ...
+├── cli/
+│   └── win-x64/
+│       ├── proctail.exe
+│       ├── ProcTail.Core.dll
+│       └── ...
+├── tools/
+│   └── test-process.exe
+├── logs/
+│   ├── test-process.log
+│   └── test-process-error.log
+└── TestFiles/
+    └── (test-processが作成するファイル)
 
 C:/Temp/ProcTailScripts/
 ├── integration-test.ps1
@@ -215,17 +229,18 @@ C:/Temp/ProcTailScripts/
 
 現在、以下の理由でイベントが記録されない場合があります：
 
-1. **Windows Store アプリの制限**: UWPアプリ版のNotepadは、ファイル操作が別プロセスで実行される場合があります
-2. **プロセスフィルタリング**: システムプロセス（PID: 4等）のイベントは意図的に除外されます
-3. **ETWセッション競合**: 複数のETWセッションが同時実行されると、イベントが正しく取得できない場合があります
+1. **プロセスフィルタリング**: システムプロセス（PID: 4等）のイベントは意図的に除外されます
+2. **ETWセッション競合**: 複数のETWセッションが同時実行されると、イベントが正しく取得できない場合があります
+3. **一時ディレクトリの除外**: 一部の一時ディレクトリでのファイル操作は除外される場合があります
 
-### 推奨テスト方法
+### test-process.exeについて
 
-より確実なテストのために：
+test-process.exeは、ProcTailのテスト用に開発されたGo言語製のツールです：
 
-1. **クラシックNotepadを使用**: `C:\Windows\System32\notepad.exe`
-2. **単一ETWセッション**: テスト前に既存セッションをクリーンアップ
-3. **明示的なファイル操作**: 新規ファイル作成・保存を実行
+- **連続モード**: `-duration` と `-interval` で指定した時間、定期的にファイル操作を実行
+- **ファイル操作**: 作成、書き込み、読み込み、削除を自動実行
+- **出力ディレクトリ**: `-dir` オプションで指定（デフォルト: 現在のディレクトリ）
+- **詳細ログ**: `-verbose` オプションで詳細な操作ログを出力
 
 ## 参考
 

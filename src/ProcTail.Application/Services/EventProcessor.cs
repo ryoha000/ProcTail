@@ -138,7 +138,7 @@ public class EventProcessor : IEventProcessor
         }
 
         // ファイルパスフィルタリング（FileIOイベントの場合のみ）
-        if (rawEvent.ProviderName == "Windows Kernel" && rawEvent.EventName.StartsWith("FileIO/"))
+        if ((rawEvent.ProviderName == "Windows Kernel" || rawEvent.ProviderName == "Microsoft-Windows-Kernel-FileIO") && rawEvent.EventName.StartsWith("FileIO/"))
         {
             if (!ShouldProcessFilePath(rawEvent))
             {
@@ -306,7 +306,9 @@ public class EventProcessor : IEventProcessor
             return rawEvent.ProviderName switch
             {
                 "Windows Kernel" when rawEvent.EventName.StartsWith("FileIO/") => await ConvertFileEventAsync(rawEvent, baseProperties),
+                "Microsoft-Windows-Kernel-FileIO" when rawEvent.EventName.StartsWith("FileIO/") => await ConvertFileEventAsync(rawEvent, baseProperties),
                 "Windows Kernel" when rawEvent.EventName.StartsWith("Process/") => await ConvertProcessEventAsync(rawEvent, baseProperties),
+                "Microsoft-Windows-Kernel-Process" when rawEvent.EventName.StartsWith("Process/") => await ConvertProcessEventAsync(rawEvent, baseProperties),
                 _ => new GenericEventData
                 {
                     Timestamp = baseProperties.Timestamp,
