@@ -23,9 +23,9 @@ echo
 echo "🔨 Step 1: Building project..."
 cd "$PROJECT_ROOT"
 
-echo "Publishing in Release configuration..."
-dotnet publish src/ProcTail.Host/ProcTail.Host.csproj --configuration Release --output "$PROJECT_ROOT/publish/host"
-dotnet publish src/ProcTail.Cli/ProcTail.Cli.csproj --configuration Release --output "$PROJECT_ROOT/publish/cli"
+echo "Publishing in Release configuration with self-contained runtime..."
+dotnet publish src/ProcTail.Host/ProcTail.Host.csproj --configuration Release --runtime win-x64 --self-contained true --output "$PROJECT_ROOT/publish/host"
+dotnet publish src/ProcTail.Cli/ProcTail.Cli.csproj --configuration Release --runtime win-x64 --self-contained true --output "$PROJECT_ROOT/publish/cli"
 
 if [ $? -ne 0 ]; then
     echo "❌ Publish failed"
@@ -81,15 +81,27 @@ powershell.exe -Command "
     New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/tools' -Force | Out-Null
 "
 
-# ビルド成果物をコピー
+# ビルド成果物をコピー（Windows用ファイルのみ）
 echo "Copying Host binaries..."
 powershell.exe -Command "
-    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\host\\*' -Destination '$WINDOWS_TEST_DIR/host' -Recurse -Force
+    \$hostFiles = @('ProcTail.Host.exe', 'ProcTail.Host.dll', 'ProcTail.Host.runtimeconfig.json', 'appsettings.json', 'app.manifest', '*.dll')
+    foreach (\$pattern in \$hostFiles) {
+        \$files = Get-ChildItem -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\host' -Name \$pattern -ErrorAction SilentlyContinue
+        foreach (\$file in \$files) {
+            Copy-Item -Path \"\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\host\\\$file\" -Destination '$WINDOWS_TEST_DIR/host' -Force
+        }
+    }
 "
 
 echo "Copying CLI binaries..."
 powershell.exe -Command "
-    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\cli\\*' -Destination '$WINDOWS_TEST_DIR/cli' -Recurse -Force
+    \$cliFiles = @('*.dll', '*.pdb', '*.xml', '*.exe')
+    foreach (\$pattern in \$cliFiles) {
+        \$files = Get-ChildItem -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\cli' -Name \$pattern -ErrorAction SilentlyContinue
+        foreach (\$file in \$files) {
+            Copy-Item -Path \"\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\cli\\\$file\" -Destination '$WINDOWS_TEST_DIR/cli' -Force
+        }
+    }
 "
 
 echo "Copying test-process.exe..."

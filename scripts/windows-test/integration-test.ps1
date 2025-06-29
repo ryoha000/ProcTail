@@ -117,8 +117,10 @@ try {
     }
     Write-Host "Log directory: $logDir" -ForegroundColor Gray
 
-    # Start Host process with admin privileges (output redirection not supported with RunAs)
-    $hostProcess = Start-Process $hostPath -WorkingDirectory $hostDir -Verb RunAs -PassThru
+    # Start Host process with admin privileges 
+    # Note: When using -Verb RunAs, -WorkingDirectory may not work as expected
+    # Instead, use the executable's directory as the starting point
+    $hostProcess = Start-Process $hostPath -Verb RunAs -PassThru
     
     # Wait for initialization
     Write-Host "Waiting for Host initialization..." -ForegroundColor Gray
@@ -129,9 +131,18 @@ try {
         Write-Host "ERROR: Host process has exited unexpectedly" -ForegroundColor Red
         Write-Host "Exit code: $($hostProcess.ExitCode)" -ForegroundColor Red
         
-        # Note: When using -Verb RunAs, we cannot capture standard output/error
-        Write-Host "Unable to capture output when running with elevated privileges" -ForegroundColor Yellow
-        Write-Host "Check Windows Event Log or log files for more information" -ForegroundColor Yellow
+        # Read any error output
+        $stderr = $hostProcess.StandardError.ReadToEnd()
+        $stdout = $hostProcess.StandardOutput.ReadToEnd()
+        
+        if ($stderr) {
+            Write-Host "Standard Error:" -ForegroundColor Red
+            Write-Host $stderr -ForegroundColor Red
+        }
+        if ($stdout) {
+            Write-Host "Standard Output:" -ForegroundColor Yellow
+            Write-Host $stdout -ForegroundColor Yellow
+        }
         
         Read-Host "Press Enter to exit"
         exit 1
