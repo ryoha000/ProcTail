@@ -41,8 +41,8 @@ Write-Host "Administrator privileges confirmed" -ForegroundColor Green
 $testRoot = "C:/Temp/ProcTailTest"
 $hostDir = "C:/Temp/ProcTailTest/host"
 $cliDir = "C:/Temp/ProcTailTest/cli"
-$hostPath = "C:/Temp/ProcTailTest/host/win-x64/ProcTail.Host.exe"
-$cliPath = "C:/Temp/ProcTailTest/cli/win-x64/proctail.exe"
+$hostPath = "C:/Temp/ProcTailTest/host/ProcTail.Host.exe"
+$cliPath = "C:/Temp/ProcTailTest/cli/proctail.exe"
 
 # File existence check
 if (-not (Test-Path $hostPath)) {
@@ -129,18 +129,9 @@ try {
         Write-Host "ERROR: Host process has exited unexpectedly" -ForegroundColor Red
         Write-Host "Exit code: $($hostProcess.ExitCode)" -ForegroundColor Red
         
-        # Read any error output
-        $stderr = $hostProcess.StandardError.ReadToEnd()
-        $stdout = $hostProcess.StandardOutput.ReadToEnd()
-        
-        if ($stderr) {
-            Write-Host "Standard Error:" -ForegroundColor Red
-            Write-Host $stderr -ForegroundColor Red
-        }
-        if ($stdout) {
-            Write-Host "Standard Output:" -ForegroundColor Yellow
-            Write-Host $stdout -ForegroundColor Yellow
-        }
+        # Note: When using -Verb RunAs, we cannot capture standard output/error
+        Write-Host "Unable to capture output when running with elevated privileges" -ForegroundColor Yellow
+        Write-Host "Check Windows Event Log or log files for more information" -ForegroundColor Yellow
         
         Read-Host "Press Enter to exit"
         exit 1
