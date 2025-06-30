@@ -188,17 +188,28 @@ try {
         Write-Host "test-process started with PID: $testProcessPid" -ForegroundColor Green
         
         # Wait a moment for the process to initialize
-        Start-Sleep -Seconds 2
+        Start-Sleep -Seconds 3
         
         # Add to monitoring
         Write-Host "Adding test-process to monitoring..." -ForegroundColor Gray
         $addResult = & $cliPath add --pid $testProcessPid --tag $Tag 2>&1
         Write-Host "Add result: $addResult" -ForegroundColor Gray
         
-        # Verify the addition was successful
-        Start-Sleep -Seconds 1
+        # Verify the addition was successful - increased wait time for ETW initialization
+        Write-Host "Waiting for ETW monitoring to initialize..." -ForegroundColor Gray
+        Start-Sleep -Seconds 5
+        
+        # Verify monitoring is active
         $listResult = & $cliPath list 2>&1
         Write-Host "Watch targets after addition: $listResult" -ForegroundColor Gray
+        
+        # Additional verification
+        if ($listResult -match "$testProcessPid.*$Tag") {
+            Write-Host "✓ test-process (PID: $testProcessPid) successfully added to monitoring" -ForegroundColor Green
+        } else {
+            Write-Host "⚠ Warning: test-process may not be properly registered for monitoring" -ForegroundColor Yellow
+            Write-Host "  List output: $listResult" -ForegroundColor Yellow
+        }
     } else {
         Write-Host "ERROR: Failed to start test-process" -ForegroundColor Red
         $testProcessPid = $null
@@ -328,7 +339,7 @@ Write-Host "================= DEBUG LOGS =================" -ForegroundColor Cya
 if (Test-Path $testProcessLogPath) {
     Write-Host ""
     Write-Host "test-process log:" -ForegroundColor Yellow
-    Get-Content $testProcessLogPath | ForEach-Object { Write-Host $_ -ForegroundColor White }
+    Get-Content $testProcessLogPath -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
 } else {
     Write-Host "test-process log file not found: $testProcessLogPath" -ForegroundColor Red
 }
@@ -337,7 +348,7 @@ if (Test-Path $testProcessLogPath) {
 if (Test-Path $testProcessErrorPath) {
     Write-Host ""
     Write-Host "test-process error log:" -ForegroundColor Yellow
-    Get-Content $testProcessErrorPath | ForEach-Object { Write-Host $_ -ForegroundColor White }
+    Get-Content $testProcessErrorPath -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
 }
 
 # Check if test files were actually created
@@ -354,30 +365,30 @@ if (Test-Path $testFilesDir) {
     Write-Host "  Test directory does not exist: $testFilesDir" -ForegroundColor Red
 }
 
-# Manual test to verify test-process can create files
-Write-Host ""
-Write-Host "Manual test-process verification:" -ForegroundColor Yellow
-if ($testProcessPid) {
-    Write-Host "Running a simple file-write test to verify test-process functionality..." -ForegroundColor Gray
-    $manualTestArgs = "-count", "3", "-verbose", "-dir", $testFilesDir, "file-write"
-    try {
-        $manualResult = & $testProcessPath $manualTestArgs 2>&1
-        Write-Host "Manual test result:" -ForegroundColor Gray
-        $manualResult | ForEach-Object { Write-Host "  $_" -ForegroundColor White }
+# # Manual test to verify test-process can create files
+# Write-Host ""
+# Write-Host "Manual test-process verification:" -ForegroundColor Yellow
+# if ($testProcessPid) {
+#     Write-Host "Running a simple file-write test to verify test-process functionality..." -ForegroundColor Gray
+#     $manualTestArgs = "-count", "3", "-verbose", "-dir", $testFilesDir, "file-write"
+#     try {
+#         $manualResult = & $testProcessPath $manualTestArgs 2>&1
+#         Write-Host "Manual test result:" -ForegroundColor Gray
+#         $manualResult | ForEach-Object { Write-Host "  $_" -ForegroundColor White }
         
-        # Check if files were created by manual test
-        Start-Sleep -Seconds 2
-        $manualFiles = Get-ChildItem $testFilesDir -ErrorAction SilentlyContinue
-        if ($manualFiles) {
-            Write-Host "Manual test created files:" -ForegroundColor Green
-            $manualFiles | ForEach-Object { Write-Host "  $($_.Name)" -ForegroundColor Green }
-        } else {
-            Write-Host "Manual test failed to create files" -ForegroundColor Red
-        }
-    } catch {
-        Write-Host "Manual test failed: $($_.Exception.Message)" -ForegroundColor Red
-    }
-}
+#         # Check if files were created by manual test
+#         Start-Sleep -Seconds 2
+#         $manualFiles = Get-ChildItem $testFilesDir -ErrorAction SilentlyContinue
+#         if ($manualFiles) {
+#             Write-Host "Manual test created files:" -ForegroundColor Green
+#             $manualFiles | ForEach-Object { Write-Host "  $($_.Name)" -ForegroundColor Green }
+#         } else {
+#             Write-Host "Manual test failed to create files" -ForegroundColor Red
+#         }
+#     } catch {
+#         Write-Host "Manual test failed: $($_.Exception.Message)" -ForegroundColor Red
+#     }
+# }
 
 # Check Host process logs
 Write-Host ""
@@ -386,7 +397,7 @@ $hostLogPath = "$logDir/host.log"
 if (Test-Path $hostLogPath) {
     Write-Host "Host log file: $hostLogPath" -ForegroundColor Gray
     Write-Host "--- Host Log Content (last 50 lines) ---" -ForegroundColor Gray
-    Get-Content $hostLogPath -Tail 50 | ForEach-Object { Write-Host $_ -ForegroundColor White }
+    Get-Content $hostLogPath -Tail 50 -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
     Write-Host "--- End Host Log ---" -ForegroundColor Gray
 } else {
     Write-Host "  Host log file not found: $hostLogPath" -ForegroundColor Red

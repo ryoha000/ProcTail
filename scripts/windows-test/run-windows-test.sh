@@ -49,7 +49,7 @@ echo
 echo "🧹 Step 2: ETW cleanup to prevent file locks..."
 
 # First copy cleanup script to Windows and run it
-powershell.exe -Command "
+pwsh.exe -Command "
     if (-not (Test-Path '$WINDOWS_SCRIPTS_DIR')) { 
         New-Item -ItemType Directory -Path '$WINDOWS_SCRIPTS_DIR' -Force | Out-Null 
     }
@@ -58,10 +58,10 @@ powershell.exe -Command "
 
 echo "Running ETW cleanup to stop any existing Host processes..."
 echo "This will request administrator privileges..."
-powershell.exe -Command "
+pwsh.exe -Command "
     try {
         # Run cleanup with administrator privileges
-        Start-Process PowerShell -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& $WINDOWS_SCRIPTS_DIR\\cleanup-etw.ps1 -Silent; Start-Sleep 3\"' -Verb RunAs -Wait
+        Start-Process PWSH -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& $WINDOWS_SCRIPTS_DIR\\cleanup-etw.ps1 -Silent; Start-Sleep 3\"' -Verb RunAs -Wait
         Write-Host 'ETW cleanup completed' -ForegroundColor Green
     }
     catch {
@@ -74,7 +74,7 @@ echo
 echo "📋 Step 3: Copying files to Windows environment..."
 
 # Windows側のディレクトリを作成
-powershell.exe -Command "
+pwsh.exe -Command "
     if (Test-Path '$WINDOWS_TEST_DIR') { Remove-Item -Recurse -Force '$WINDOWS_TEST_DIR' }
     New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/host' -Force | Out-Null
     New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/cli' -Force | Out-Null
@@ -83,7 +83,7 @@ powershell.exe -Command "
 
 # ビルド成果物をコピー（Windows用ファイルのみ）
 echo "Copying Host binaries..."
-powershell.exe -Command "
+pwsh.exe -Command "
     \$hostFiles = @('ProcTail.Host.exe', 'ProcTail.Host.dll', 'ProcTail.Host.runtimeconfig.json', 'appsettings.json', 'app.manifest', '*.dll')
     foreach (\$pattern in \$hostFiles) {
         \$files = Get-ChildItem -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\host' -Name \$pattern -ErrorAction SilentlyContinue
@@ -94,7 +94,7 @@ powershell.exe -Command "
 "
 
 echo "Copying CLI binaries..."
-powershell.exe -Command "
+pwsh.exe -Command "
     \$cliFiles = @('*.dll', '*.pdb', '*.xml', '*.exe')
     foreach (\$pattern in \$cliFiles) {
         \$files = Get-ChildItem -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\cli' -Name \$pattern -ErrorAction SilentlyContinue
@@ -105,25 +105,28 @@ powershell.exe -Command "
 "
 
 echo "Copying test-process.exe..."
-powershell.exe -Command "
+pwsh.exe -Command "
     Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\tools\\test-process\\test-process.exe' -Destination '$WINDOWS_TEST_DIR/tools/test-process.exe' -Force
 "
 
 # PowerShellスクリプトをコピー
 echo "Copying test scripts..."
-powershell.exe -Command "
-    # BOMなしUTF-8で保存し直す
+pwsh.exe -Command "
+    # BOM付きUTF-8で保存し直す
     \$scripts = Get-ChildItem -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\scripts\\windows-test\\*.ps1'
     foreach (\$script in \$scripts) {
-        \$content = Get-Content -Path \$script.FullName -Raw
+        \$content = Get-Content -Path \$script.FullName -Raw -Encoding UTF8
         \$outputPath = Join-Path '$WINDOWS_SCRIPTS_DIR' \$script.Name
-        [System.IO.File]::WriteAllText(\$outputPath, \$content, [System.Text.UTF8Encoding]::new(\$false))
+        
+        # BOM付きUTF-8エンコーディングで保存
+        \$utf8WithBom = New-Object System.Text.UTF8Encoding(\$true)
+        [System.IO.File]::WriteAllText(\$outputPath, \$content, \$utf8WithBom)
     }
 "
 
 # appsettings.jsonのPipeName設定を修正
 echo "Configuring appsettings.json..."
-powershell.exe -Command "
+pwsh.exe -Command "
     \$configPath = '$WINDOWS_TEST_DIR/host/appsettings.json'
     \$config = Get-Content \$configPath -Raw | ConvertFrom-Json
     \$config.NamedPipe.PipeName = 'ProcTail'
@@ -146,7 +149,7 @@ echo ""
 
 # PowerShellウィンドウを開いたままにするため、-NoExit を追加
 # 単純なコマンドラインを使用してエスケープの問題を回避
-powershell.exe -Command "Start-Process PowerShell -Verb RunAs -ArgumentList '-NoExit', '-ExecutionPolicy', 'RemoteSigned', '-File', '\"$WINDOWS_SCRIPTS_DIR\\integration-test.ps1\"'"
+pwsh.exe -Command "Start-Process PWSH -Verb RunAs -ArgumentList '-NoExit', '-ExecutionPolicy', 'RemoteSigned', '-File', '\"$WINDOWS_SCRIPTS_DIR\\integration-test.ps1\"' -Wait -WorkingDirectory '$WINDOWS_TEST_DIR'"
 
 echo ""
 echo "🎉 Automated test execution initiated!"

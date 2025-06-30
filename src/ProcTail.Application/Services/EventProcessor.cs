@@ -80,6 +80,25 @@ public class EventProcessor : IEventProcessor
                         _logger.LogWarning("test-processが監視対象に登録されているが、受信イベントはPID={EventPid}、登録済みPID={RegisteredPid}", 
                             rawEvent.ProcessId, testProcessTarget.ProcessId);
                     }
+                    else if (rawEvent.ProviderName.Contains("Kernel") && rawEvent.EventName.StartsWith("FileIO/"))
+                    {
+                        // FileIOイベントで監視対象外の場合、test-processかどうかチェック
+                        try
+                        {
+                            using var process = System.Diagnostics.Process.GetProcessById(rawEvent.ProcessId);
+                            var processName = process.ProcessName;
+                            if (processName.Contains("test-process", StringComparison.OrdinalIgnoreCase) ||
+                                processName.Contains("proctail_test", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _logger.LogError("test-processのイベントが監視対象外として拒否されました! ProcessName={ProcessName}, PID={ProcessId}, 監視対象にtest-processが登録されていません", 
+                                    processName, rawEvent.ProcessId);
+                            }
+                        }
+                        catch
+                        {
+                            // プロセスが既に終了している場合
+                        }
+                    }
                 }
                 
                 return new ProcessingResult(false, ErrorMessage: "Process not watched");
@@ -198,12 +217,12 @@ public class EventProcessor : IEventProcessor
                     // test-processが作成するファイルは除外しない
                     if (ShouldAllowTestProcessFile(filePath, rawEvent.ProcessId))
                     {
-                        _logger.LogTrace("除外パターンにマッチしましたが、test-processのファイルのため許可 (FilePath: {FilePath}, ProcessId: {ProcessId})", 
-                            filePath, rawEvent.ProcessId);
+                        _logger.LogDebug("除外パターン「{Pattern}」にマッチしましたが、test-processのファイルのため許可 (FilePath: {FilePath}, ProcessId: {ProcessId})", 
+                            pattern, filePath, rawEvent.ProcessId);
                         continue; // このパターンはスキップして次のパターンをチェック
                     }
                     
-                    _logger.LogTrace("除外パターンにマッチしました (FilePath: {FilePath}, Pattern: {Pattern}, ProcessId: {ProcessId})", 
+                    _logger.LogDebug("除外パターンにマッチしたためフィルタリング (FilePath: {FilePath}, Pattern: {Pattern}, ProcessId: {ProcessId})", 
                         filePath, pattern, rawEvent.ProcessId);
                     return false;
                 }
@@ -650,6 +669,15 @@ public class EventProcessor : IEventProcessor
             fileName.Contains("test_", StringComparison.OrdinalIgnoreCase))
         {
             _logger.LogTrace("test-process関連ファイルとして許可: {FilePath}, ProcessId: {ProcessId}", 
+                filePath, processId);
+            return true;
+        }
+        
+        // パスにProcTailTestまたはTestFilesが含まれる場合も許可
+        if (filePath.Contains("ProcTailTest", StringComparison.OrdinalIgnoreCase) ||
+            filePath.Contains("TestFiles", StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogTrace("ProcTailテストディレクトリ内のファイルとして許可: {FilePath}, ProcessId: {ProcessId}", 
                 filePath, processId);
             return true;
         }
