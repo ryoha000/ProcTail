@@ -214,7 +214,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             if (session != null)
             {
                 _sessions.Add(session);
-                _logger.LogInformation("統合ETWセッションを作成しました");
+                _logger.LogInformation("統合ETWセッションを作成しました - セッション名: {SessionName}", sessionName);
             }
         }
         catch (Exception ex)
@@ -577,16 +577,36 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         session.Source.Kernel.FileIORename += OnFileIOEvent;
         session.Source.Kernel.FileIOSetInfo += OnFileIOEvent;
         session.Source.Kernel.FileIOClose += OnFileIOEvent;
-        _logger.LogDebug("FileIOイベントハンドラーを設定しました (Create, Write, Delete, Rename, SetInfo, Close)");
+        
+        // すべてのFileIOイベントをキャッチするための汎用ハンドラーも追加
+        session.Source.Kernel.All += (data) => {
+            if (data.EventName.StartsWith("FileIO/"))
+            {
+                _logger.LogError("Kernel.AllでFileIOイベントをキャッチ: {EventName}, ProcessId: {ProcessId}", data.EventName, data.ProcessID);
+                OnFileIOEvent(data);
+            }
+        };
+        
+        _logger.LogInformation("FileIOイベントハンドラーを設定しました (Create, Write, Delete, Rename, SetInfo, Close + All)");
         
         // プロセスイベント
         session.Source.Kernel.ProcessStart += OnProcessEvent;
         session.Source.Kernel.ProcessStop += OnProcessEvent;
         _logger.LogDebug("プロセスイベントハンドラーを設定しました (Start, Stop)");
         
-        // 汎用イベントハンドラー
+        // 汎用イベントハンドラー（デバッグ強化）
         session.Source.UnhandledEvents += OnUnhandledEvent;
-        _logger.LogDebug("未処理イベントハンドラーを設定しました");
+        
+        // すべてのイベントをキャッチするハンドラー（デバッグ用）
+        session.Source.Dynamic.All += (data) => {
+            if (IsTestProcess(data.ProcessID))
+            {
+                _logger.LogError("Dynamic.Allでtest-processイベントをキャッチ: {EventName}, ProcessId: {ProcessId}, Provider: {Provider}", 
+                    data.EventName, data.ProcessID, data.ProviderName);
+            }
+        };
+        
+        _logger.LogInformation("未処理イベントハンドラーを設定しました（デバッグ強化版）");
     }
 
     /// <summary>
@@ -634,12 +654,19 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             
             _logger.LogDebug("RAW FileIOイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}", 
                 eventName, processId, data.ProviderName, data.OpcodeName);
-            
-            // test-processからのイベントかチェック
-            if (processId == 70412 || IsTestProcess(processId))
+                
+            // 追加デバッグ: test-processのFileIOイベントを詳細にログ出力
+            if (IsTestProcess(processId))
             {
-                _logger.LogWarning("TEST-PROCESS FileIOイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}, TaskName={TaskName}", 
-                    eventName, processId, data.ProviderName, data.OpcodeName, data.TaskName);
+                _logger.LogInformation("DEBUG FileIOイベント詳細: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}, TaskName={TaskName}, Level={Level}", 
+                    eventName, processId, data.ProviderName, data.OpcodeName, data.TaskName, data.Level);
+            }
+            
+            // test-processからのイベントかチェック（プロセス名で判定）
+            if (IsTestProcess(processId))
+            {
+                _logger.LogError("TEST-PROCESS FileIOイベント受信!!! EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}, TaskName={TaskName}, TimeStamp={TimeStamp}", 
+                    eventName, processId, data.ProviderName, data.OpcodeName, data.TaskName, data.TimeStamp);
             }
             
             // TraceEventからペイロード情報を取得
@@ -650,8 +677,16 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                 payload[name] = value ?? string.Empty;
             }
 
-            // ファイルパス情報を取得
+            // ファイルパス情報を取得（デバッグ強化）
             var fileName = payload.ContainsKey("FileName") ? payload["FileName"].ToString() : "Unknown";
+            
+            // test-processの場合、ペイロード詳細をログ出力
+            if (IsTestProcess(processId))
+            {
+                var payloadStr = string.Join(", ", payload.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+                _logger.LogError("test-process FileIOイベントペイロード: ProcessId={ProcessId}, FileName={FileName}, Payload=[{Payload}]", 
+                    processId, fileName, payloadStr);
+            }
             
             _logger.LogTrace("FileIOイベントを受信: {EventName}, ProcessId: {ProcessId}, FileName: {FileName}", 
                 eventName, processId, fileName);
@@ -690,7 +725,19 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         try
         {
             var eventName = data.EventName;
+            var processId = data.ProcessID;
             var payload = new Dictionary<string, object>();
+            
+            // 全プロセスイベントをログ出力（デバッグ用）
+            _logger.LogDebug("RAW Processイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}", 
+                eventName, processId, data.ProviderName, data.OpcodeName);
+                
+            // test-processからのイベントかチェック
+            if (IsTestProcess(processId))
+            {
+                _logger.LogError("TEST-PROCESS Processイベント受信!!! EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}, TimeStamp={TimeStamp}", 
+                    eventName, processId, data.ProviderName, data.OpcodeName, data.TimeStamp);
+            }
             
             // TraceEventからペイロード情報を取得
             for (int i = 0; i < data.PayloadNames.Length; i++)
@@ -904,11 +951,23 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         {
             using var process = System.Diagnostics.Process.GetProcessById(processId);
             var processName = process.ProcessName;
-            return processName.Contains("test-process", StringComparison.OrdinalIgnoreCase) ||
-                   processName.Contains("proctail_test", StringComparison.OrdinalIgnoreCase);
+            var mainModuleName = process.MainModule?.ModuleName ?? "Unknown";
+            
+            var isTestProcess = processName.Contains("test-process", StringComparison.OrdinalIgnoreCase) ||
+                               processName.Contains("proctail_test", StringComparison.OrdinalIgnoreCase) ||
+                               mainModuleName.Contains("test-process", StringComparison.OrdinalIgnoreCase);
+                               
+            if (isTestProcess)
+            {
+                _logger.LogError("IsTestProcess: PID={ProcessId}, ProcessName={ProcessName}, MainModule={MainModule} -> TRUE", 
+                    processId, processName, mainModuleName);
+            }
+            
+            return isTestProcess;
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogDebug("IsTestProcess: PID={ProcessId} -> プロセス情報取得失敗: {Error}", processId, ex.Message);
             return false;
         }
     }
