@@ -214,7 +214,7 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             if (session != null)
             {
                 _sessions.Add(session);
-                _logger.LogInformation("統合ETWセッションを作成しました - セッション名: {SessionName}", sessionName);
+                _logger.LogInformation("統合ETWセッションを作成しました");
             }
         }
         catch (Exception ex)
