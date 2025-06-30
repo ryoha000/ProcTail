@@ -42,9 +42,7 @@ public class TestEtwConfiguration : IEtwConfiguration
     {
         ExcludeSystemProcesses = false,
         MinimumProcessId = 0,
-        ExcludedProcessNames = Array.Empty<string>(),
-        IncludeFileExtensions = new[] { ".txt", ".log", ".exe", ".dll" },
-        ExcludeFilePatterns = Array.Empty<string>()
+        ExcludedProcessNames = Array.Empty<string>()
     };
     public EtwPerformanceOptions PerformanceOptions { get; set; } = new()
     {

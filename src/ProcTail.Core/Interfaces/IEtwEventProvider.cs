@@ -92,16 +92,6 @@ public class EtwFilteringOptions
     /// 除外するプロセス名一覧
     /// </summary>
     public IReadOnlyList<string> ExcludedProcessNames { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// 対象とするファイル拡張子
-    /// </summary>
-    public IReadOnlyList<string> IncludeFileExtensions { get; init; } = Array.Empty<string>();
-
-    /// <summary>
-    /// 除外するファイルパターン
-    /// </summary>
-    public IReadOnlyList<string> ExcludeFilePatterns { get; init; } = Array.Empty<string>();
 }
 
 /// <summary>

@@ -156,147 +156,13 @@ public class EventProcessor : IEventProcessor
             return false;
         }
 
-        // ファイルパスフィルタリング（FileIOイベントの場合のみ）
-        if ((rawEvent.ProviderName == "Windows Kernel" || rawEvent.ProviderName == "Microsoft-Windows-Kernel-FileIO") && rawEvent.EventName.StartsWith("FileIO/"))
-        {
-            if (!ShouldProcessFilePath(rawEvent))
-            {
-                _logger.LogTrace("ファイルパスフィルタリングで除外: Event={Event}, ProcessId={ProcessId}", 
-                    rawEvent.EventName, rawEvent.ProcessId);
-                return false;
-            }
-        }
+        // ファイルパスフィルタリングは削除されました
 
         return true;
     }
 
-    /// <summary>
-    /// ファイルパスのフィルタリング
-    /// </summary>
-    /// <param name="rawEvent">生ETWイベント</param>
-    /// <returns>処理すべき場合true</returns>
-    private bool ShouldProcessFilePath(RawEventData rawEvent)
-    {
-        // ファイルパスを取得
-        string? filePath = null;
-        if (rawEvent.Payload.TryGetValue("FileName", out var fileNameObj))
-        {
-            filePath = fileNameObj?.ToString();
-        }
-        else if (rawEvent.Payload.TryGetValue("FilePath", out var filePathObj))
-        {
-            filePath = filePathObj?.ToString();
-        }
 
-        if (string.IsNullOrEmpty(filePath))
-        {
-            _logger.LogTrace("ファイルパスが見つかりません - イベントを通します (Event: {Event}, ProcessId: {ProcessId})", 
-                rawEvent.EventName, rawEvent.ProcessId);
-            return true; // ファイルパスが不明な場合は通す（FileIO/Closeなど）
-        }
 
-        // 拡張子チェック
-        if (_filteringOptions?.IncludeFileExtensions?.Count > 0)
-        {
-            var extension = Path.GetExtension(filePath);
-            if (!_filteringOptions.IncludeFileExtensions.Contains(extension, StringComparer.OrdinalIgnoreCase))
-            {
-                _logger.LogDebug("除外対象の拡張子です (FilePath: {FilePath}, Extension: {Extension})", 
-                    filePath, extension);
-                return false;
-            }
-        }
-
-        // 除外パターンチェック
-        if (_filteringOptions?.ExcludeFilePatterns != null)
-        {
-            foreach (var pattern in _filteringOptions.ExcludeFilePatterns)
-            {
-                if (IsMatchPattern(filePath, pattern))
-                {
-                    // test-processが作成するファイルは除外しない
-                    if (ShouldAllowTestProcessFile(filePath, rawEvent.ProcessId))
-                    {
-                        _logger.LogDebug("除外パターン「{Pattern}」にマッチしましたが、test-processのファイルのため許可 (FilePath: {FilePath}, ProcessId: {ProcessId})", 
-                            pattern, filePath, rawEvent.ProcessId);
-                        continue; // このパターンはスキップして次のパターンをチェック
-                    }
-                    
-                    _logger.LogDebug("除外パターンにマッチしたためフィルタリング (FilePath: {FilePath}, Pattern: {Pattern}, ProcessId: {ProcessId})", 
-                        filePath, pattern, rawEvent.ProcessId);
-                    return false;
-                }
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// ワイルドカードパターンマッチング
-    /// </summary>
-    /// <param name="input">入力文字列</param>
-    /// <param name="pattern">パターン</param>
-    /// <returns>マッチした場合true</returns>
-    private static bool IsMatchPattern(string input, string pattern)
-    {
-        // Windowsパスの大文字小文字を無視
-        input = input.ToUpperInvariant();
-        pattern = pattern.ToUpperInvariant();
-
-        // パスセパレータを正規化
-        input = input.Replace('/', '\\');
-        pattern = pattern.Replace('/', '\\');
-
-        // 簡単なワイルドカードマッチング
-        return IsWildcardMatch(input, pattern);
-    }
-
-    /// <summary>
-    /// ワイルドカード (*) を使った文字列マッチング
-    /// </summary>
-    /// <param name="input">入力文字列</param>
-    /// <param name="pattern">パターン（*を含む）</param>
-    /// <returns>マッチした場合true</returns>
-    private static bool IsWildcardMatch(string input, string pattern)
-    {
-        int inputIndex = 0;
-        int patternIndex = 0;
-        int inputBacktrack = -1;
-        int patternBacktrack = -1;
-
-        while (inputIndex < input.Length)
-        {
-            if (patternIndex < pattern.Length && pattern[patternIndex] == '*')
-            {
-                patternBacktrack = patternIndex++;
-                inputBacktrack = inputIndex;
-            }
-            else if (patternIndex < pattern.Length && 
-                     (pattern[patternIndex] == input[inputIndex] || pattern[patternIndex] == '?'))
-            {
-                patternIndex++;
-                inputIndex++;
-            }
-            else if (patternBacktrack != -1)
-            {
-                patternIndex = patternBacktrack + 1;
-                inputIndex = ++inputBacktrack;
-            }
-            else
-            {
-                return false;
-            }
-        }
-
-        // パターンの残りが全て * かチェック
-        while (patternIndex < pattern.Length && pattern[patternIndex] == '*')
-        {
-            patternIndex++;
-        }
-
-        return patternIndex == pattern.Length;
-    }
 
     /// <summary>
     /// 生ETWイベントをドメインイベントに変換
@@ -648,40 +514,4 @@ public class EventProcessor : IEventProcessor
         return 0; // デフォルトは正常終了
     }
 
-    /// <summary>
-    /// test-processが作成するファイルを許可するかどうかを判定
-    /// </summary>
-    /// <param name="filePath">ファイルパス</param>
-    /// <param name="processId">プロセスID</param>
-    /// <returns>許可する場合true</returns>
-    private bool ShouldAllowTestProcessFile(string filePath, int processId)
-    {
-        // プロセスが監視対象かチェック
-        if (!_watchTargetManager.IsWatchedProcess(processId))
-        {
-            return false;
-        }
-
-        // ファイル名にtest-processまたはproctail_testが含まれる場合は許可
-        var fileName = Path.GetFileName(filePath);
-        if (fileName.Contains("test-process", StringComparison.OrdinalIgnoreCase) ||
-            fileName.Contains("proctail_test", StringComparison.OrdinalIgnoreCase) ||
-            fileName.Contains("test_", StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.LogTrace("test-process関連ファイルとして許可: {FilePath}, ProcessId: {ProcessId}", 
-                filePath, processId);
-            return true;
-        }
-        
-        // パスにProcTailTestまたはTestFilesが含まれる場合も許可
-        if (filePath.Contains("ProcTailTest", StringComparison.OrdinalIgnoreCase) ||
-            filePath.Contains("TestFiles", StringComparison.OrdinalIgnoreCase))
-        {
-            _logger.LogTrace("ProcTailテストディレクトリ内のファイルとして許可: {FilePath}, ProcessId: {ProcessId}", 
-                filePath, processId);
-            return true;
-        }
-
-        return false;
-    }
 }

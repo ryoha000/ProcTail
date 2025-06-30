@@ -428,85 +428,8 @@ public class EventProcessorTests
         result.ErrorMessage.Should().Contain("Failed to convert");
     }
 
-    [Test]
-    public void ShouldProcessEvent_WithTestProcessFileInTempDirectory_ShouldReturnTrue()
-    {
-        // Arrange
-        var filteringOptions = new EtwFilteringOptions
-        {
-            ExcludeFilePatterns = new[] { @"*\Temp\*" }.AsReadOnly()
-        };
 
-        var mockConfig = new Mock<IEtwConfiguration>();
-        mockConfig.Setup(x => x.EnabledProviders)
-            .Returns(new[] { "Microsoft-Windows-Kernel-FileIO" });
-        mockConfig.Setup(x => x.EnabledEventNames)
-            .Returns(new[] { "FileIO/Create" });
-        mockConfig.Setup(x => x.FilteringOptions)
-            .Returns(filteringOptions);
 
-        var processor = new EventProcessor(_mockLogger.Object, _mockWatchTargetManager.Object, mockConfig.Object);
-
-        var payload = new Dictionary<string, object>
-        {
-            { "FileName", @"C:\Users\TestUser\AppData\Local\Temp\test-process_output.txt" }
-        };
-
-        var rawEvent = TestEventFactory.CreateRawEvent(
-            "Microsoft-Windows-Kernel-FileIO",
-            "FileIO/Create",
-            1234,
-            payload
-        );
-
-        _mockWatchTargetManager.Setup(x => x.IsWatchedProcess(1234)).Returns(true);
-
-        // Act
-        var result = processor.ShouldProcessEvent(rawEvent);
-
-        // Assert
-        result.Should().BeTrue("test-process files should be allowed even in Temp directory");
-    }
-
-    [Test]
-    public void ShouldProcessEvent_WithNonTestProcessFileInTempDirectory_ShouldReturnFalse()
-    {
-        // Arrange
-        var filteringOptions = new EtwFilteringOptions
-        {
-            ExcludeFilePatterns = new[] { @"*\Temp\*" }.AsReadOnly()
-        };
-
-        var mockConfig = new Mock<IEtwConfiguration>();
-        mockConfig.Setup(x => x.EnabledProviders)
-            .Returns(new[] { "Microsoft-Windows-Kernel-FileIO" });
-        mockConfig.Setup(x => x.EnabledEventNames)
-            .Returns(new[] { "FileIO/Create" });
-        mockConfig.Setup(x => x.FilteringOptions)
-            .Returns(filteringOptions);
-
-        var processor = new EventProcessor(_mockLogger.Object, _mockWatchTargetManager.Object, mockConfig.Object);
-
-        var payload = new Dictionary<string, object>
-        {
-            { "FileName", @"C:\Users\TestUser\AppData\Local\Temp\regular_file.txt" }
-        };
-
-        var rawEvent = TestEventFactory.CreateRawEvent(
-            "Microsoft-Windows-Kernel-FileIO",
-            "FileIO/Create",
-            1234,
-            payload
-        );
-
-        _mockWatchTargetManager.Setup(x => x.IsWatchedProcess(1234)).Returns(false);
-
-        // Act
-        var result = processor.ShouldProcessEvent(rawEvent);
-
-        // Assert
-        result.Should().BeFalse("non-test-process files in Temp should be excluded");
-    }
 
     [Test]
     public async Task ProcessEventAsync_WithFileIOCloseEvent_NoFilePath_ShouldReturnSuccess()

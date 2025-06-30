@@ -84,15 +84,6 @@ public class EtwConfiguration : IEtwConfiguration
             ExcludedProcessNames = new[]
             {
                 "System", "Registry", "smss.exe", "csrss.exe", "wininit.exe"
-            }.AsReadOnly(),
-            IncludeFileExtensions = new[]
-            {
-                ".txt", ".log", ".exe", ".dll"
-            }.AsReadOnly(),
-            ExcludeFilePatterns = new[]
-            {
-                "C:\\Windows\\System32\\*"
-                // "*\\Temp\\*" // test-processのファイル操作を許可するためコメントアウト
             }.AsReadOnly()
         };
         
@@ -164,11 +155,7 @@ public class EtwConfiguration : IEtwConfiguration
                 ExcludeSystemProcesses = filteringSection.GetValue<bool>("ExcludeSystemProcesses", true),
                 MinimumProcessId = filteringSection.GetValue<int>("MinimumProcessId", 4),
                 ExcludedProcessNames = (filteringSection.GetSection("ExcludedProcessNames").Get<string[]>() ?? 
-                    GetDefaultExcludedProcessNames()).AsReadOnly(),
-                IncludeFileExtensions = (filteringSection.GetSection("IncludeFileExtensions").Get<string[]>() ?? 
-                    GetDefaultIncludeFileExtensions()).AsReadOnly(),
-                ExcludeFilePatterns = (filteringSection.GetSection("ExcludeFilePatterns").Get<string[]>() ?? 
-                    GetDefaultExcludeFilePatterns()).AsReadOnly()
+                    GetDefaultExcludedProcessNames()).AsReadOnly()
             };
 
             // パフォーマンス設定
@@ -207,9 +194,7 @@ public class EtwConfiguration : IEtwConfiguration
         {
             ExcludeSystemProcesses = true,
             MinimumProcessId = 4,
-            ExcludedProcessNames = GetDefaultExcludedProcessNames().AsReadOnly(),
-            IncludeFileExtensions = GetDefaultIncludeFileExtensions().AsReadOnly(),
-            ExcludeFilePatterns = GetDefaultExcludeFilePatterns().AsReadOnly()
+            ExcludedProcessNames = GetDefaultExcludedProcessNames().AsReadOnly()
         };
 
         PerformanceOptions = new EtwPerformanceOptions
@@ -221,7 +206,7 @@ public class EtwConfiguration : IEtwConfiguration
             MaxEventsPerSecond = 1000
         };
 
-        _logger?.LogInformation("デフォルトETW設定を使用します - プロバイダー: {ProviderCount}, イベント: {EventCount}, ファイル監視: 有効", 
+        _logger?.LogInformation("デフォルトETW設定を使用します - プロバイダー: {ProviderCount}, イベント: {EventCount}", 
             EnabledProviders.Count, EnabledEventNames.Count);
     }
 
@@ -277,36 +262,5 @@ public class EtwConfiguration : IEtwConfiguration
         };
     }
 
-    /// <summary>
-    /// デフォルト対象ファイル拡張子
-    /// </summary>
-    private static string[] GetDefaultIncludeFileExtensions()
-    {
-        return new[]
-        {
-            ".txt", ".log", ".cfg", ".conf", ".ini", ".xml", ".json",
-            ".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1",
-            ".doc", ".docx", ".xls", ".xlsx", ".pdf",
-            ".jpg", ".png", ".gif", ".mp4", ".avi",
-            ".zip", ".rar", ".7z"
-        };
-    }
 
-    /// <summary>
-    /// デフォルト除外ファイルパターン
-    /// </summary>
-    private static string[] GetDefaultExcludeFilePatterns()
-    {
-        return new[]
-        {
-            @"C:\Windows\System32\*",
-            @"C:\Windows\SysWOW64\*",
-            @"C:\Windows\WinSxS\*",
-            @"C:\Program Files\Windows Defender\*",
-            // @"*\Temp\*", // test-processのファイル操作を許可するためコメントアウト
-            @"*\$Recycle.Bin\*",
-            @"*\.git\*",
-            @"*\node_modules\*"
-        };
-    }
 }
