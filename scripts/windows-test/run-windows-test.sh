@@ -75,10 +75,11 @@ echo "📋 Step 3: Copying files to Windows environment..."
 
 # Windows側のディレクトリを作成
 pwsh.exe -Command "
-    if (Test-Path '$WINDOWS_TEST_DIR') { Remove-Item -Recurse -Force '$WINDOWS_TEST_DIR' }
-    New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/host' -Force | Out-Null
-    New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/cli' -Force | Out-Null
-    New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/tools' -Force | Out-Null
+    \$testDirs = @('$WINDOWS_TEST_DIR/host', '$WINDOWS_SCRIPTS_DIR/cli', '$WINDOWS_TEST_DIR/tools')
+    foreach (\$dir in \$testDirs) {
+        if (Test-Path \$dir) { Remove-Item -Recurse -Force \$dir }
+        New-Item -ItemType Directory -Path \$dir -Force | Out-Null
+    }
 "
 
 # ビルド成果物をコピー（Windows用ファイルのみ）

@@ -212,12 +212,16 @@ public class ProcTailService : IProcTailService, IDisposable
     {
         try
         {
+            _logger.LogDebug("ETWイベントを受信しました (Provider: {Provider}, Event: {Event}, ProcessId: {ProcessId})",
+                rawEvent.ProviderName, rawEvent.EventName, rawEvent.ProcessId);
             // サービスが停止中または破棄されている場合は処理しない
             if (!IsRunning || _cancellationTokenSource.Token.IsCancellationRequested)
                 return;
         }
         catch (ObjectDisposedException)
         {
+            _logger.LogDebug("ETWイベントを受信しました (Provider: {Provider}, Event: {Event}, ProcessId: {ProcessId})",
+                rawEvent.ProviderName, rawEvent.EventName, rawEvent.ProcessId);            
             // CancellationTokenSourceが破棄されている場合は処理を停止
             return;
         }

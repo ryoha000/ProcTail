@@ -44,12 +44,13 @@ public class EventProcessor : IEventProcessor
     {
         if (rawEvent == null)
         {
+            _logger.LogWarning("生ETWイベントがnullです");
             return new ProcessingResult(false, ErrorMessage: "Raw event data is null");
         }
 
         try
         {
-            _logger.LogTrace("生ETWイベントを受信: {Provider}.{Event}, ProcessId: {ProcessId}", 
+            _logger.LogDebug("生ETWイベントを受信: {Provider}.{Event}, ProcessId: {ProcessId}", 
                 rawEvent.ProviderName, rawEvent.EventName, rawEvent.ProcessId);
 
             // イベントをフィルタリング
