@@ -49,8 +49,8 @@ ProcTailとの統合や独自クライアント開発を行う方向けです。
 ## 📚 関連リソース
 
 ### 公式リンク
-- **[GitHub Repository](https://github.com/your-org/proctail)** - ソースコードとIssue
-- **[Releases](https://github.com/your-org/proctail/releases)** - 最新バージョンのダウンロード
+- **[GitHub Repository](https://github.com/ryoha000/ProcTail)** - ソースコードとIssue
+- **[Releases](https://github.com/ryoha000/ProcTail/releases)** - 最新バージョンのダウンロード
 
 ### 技術参考資料
 - **[Microsoft ETW Documentation](https://docs.microsoft.com/en-us/windows/win32/etw/)** - Event Tracing for Windows
@@ -65,8 +65,8 @@ ProcTailとの統合や独自クライアント開発を行う方向けです。
 - 翻訳（英語版の作成など）
 
 ### フィードバック
-- **[GitHub Issues](https://github.com/your-org/proctail/issues)** でドキュメントの改善提案
-- **[GitHub Discussions](https://github.com/your-org/proctail/discussions)** で質問・議論
+- **[GitHub Issues](https://github.com/ryoha000/ProcTail/issues)** でドキュメントの改善提案
+- **[GitHub Discussions](https://github.com/ryoha000/ProcTail/discussions)** で質問・議論
 
 ---
 
