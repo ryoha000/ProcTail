@@ -198,7 +198,7 @@ public class EventProcessor : IEventProcessor
                 {
                     _logger.LogWarning("ファイルパスが見つかりません (Event: {Event}, ProcessId: {ProcessId})",
                         rawEvent.EventName, rawEvent.ProcessId);
-                    filePath = "Unknown"; // 処理を継続するためデフォルト値を設定
+                    return null; // ファイルパスが必須のイベントでは処理失敗とする
                 }
             }
 
