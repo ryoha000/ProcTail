@@ -14,6 +14,7 @@
     <ProjectReference Include="..\..\src\ProcTail.Infrastructure\ProcTail.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\ProcTail.Application\ProcTail.Application.csproj" />
     <ProjectReference Include="..\..\src\ProcTail.Testing.Common\ProcTail.Testing.Common.csproj" />
+    <ProjectReference Include="..\..\src\ProcTail.Cli\ProcTail.Cli.csproj" />
   </ItemGroup>
 
   <ItemGroup>
