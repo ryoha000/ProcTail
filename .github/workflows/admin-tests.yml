@@ -77,8 +77,8 @@ jobs:
       
     - name: Build Solution
       run: |
-        dotnet build ${{ env.SOLUTION_FILE }} \
-          --configuration ${{ github.event.inputs.configuration }} \
+        dotnet build ${{ env.SOLUTION_FILE }} `
+          --configuration ${{ github.event.inputs.configuration }} `
           --no-restore
           
     - name: Verify ETW Access
