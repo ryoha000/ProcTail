@@ -33,6 +33,7 @@ test-process [operation] [options]
 - `file-delete`: ファイル削除操作
 - `child-process`: 子プロセス作成
 - `mixed`: 複数操作の組み合わせ
+- `continuous`: 継続実行モード（指定時間継続的にファイル操作）
 
 ### オプション
 - `--count N`: 操作回数 (デフォルト: 3)
@@ -43,6 +44,7 @@ test-process [operation] [options]
 - `--command CMD`: 実行するコマンド (child-process用)
 - `--operations LIST`: 実行する操作のリスト (mixed用)
 - `--wait`: 開始前にキー入力待機
+- `--duration DURATION`: 継続実行時間 (continuous用、例: 30s, 5m)
 
 ## 使用例
 
@@ -74,6 +76,15 @@ test-process [operation] [options]
 
 # すべての操作タイプを実行
 ./test-process mixed --count 5 --operations write,read,delete,rename,process --verbose
+```
+
+### 継続実行テスト
+```bash
+# 30秒間継続的にファイル操作を実行
+./test-process -duration 30s -interval 2s -verbose continuous
+
+# 5分間継続的にファイル操作を実行（ETW長期テスト用）
+./test-process -duration 5m -interval 1s -verbose continuous
 ```
 
 ### JSON出力

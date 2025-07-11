@@ -1,14 +1,23 @@
 # ProcTail Windows Integration Test
 # Host-CLI統合テスト：ETW監視、Named Pipe通信、ファイルI/Oイベント記録の検証
+# test-processを使用した完全自動化テスト
+
+# パラメータ定義
 param(
-    [string]$Tag = "test-notepad",
+    [Parameter()]
+    [string]$Tag = "test-process",
+    
+    [Parameter()]
     [switch]$SkipCleanup,
+    
+    [Parameter()]
     [switch]$KeepProcesses
 )
 
 Write-Host "===============================================" -ForegroundColor Yellow
 Write-Host "   ProcTail Windows Integration Test" -ForegroundColor Yellow
 Write-Host "   Host-CLI連携テスト (ETW + Named Pipe)" -ForegroundColor Yellow
+Write-Host "   完全自動化テスト (test-process使用)" -ForegroundColor Yellow
 Write-Host "===============================================" -ForegroundColor Yellow
 
 # Admin check
@@ -32,8 +41,8 @@ Write-Host "Administrator privileges confirmed" -ForegroundColor Green
 $testRoot = "C:/Temp/ProcTailTest"
 $hostDir = "C:/Temp/ProcTailTest/host"
 $cliDir = "C:/Temp/ProcTailTest/cli"
-$hostPath = "C:/Temp/ProcTailTest/host/win-x64/ProcTail.Host.exe"
-$cliPath = "C:/Temp/ProcTailTest/cli/win-x64/proctail.exe"
+$hostPath = "C:/Temp/ProcTailTest/host/ProcTail.Host.exe"
+$cliPath = "C:/Temp/ProcTailTest/cli/proctail.exe"
 
 # File existence check
 if (-not (Test-Path $hostPath)) {
@@ -55,7 +64,7 @@ Write-Host "Required files found" -ForegroundColor Green
 # Initialize variables
 $testSuccess = $false
 $hostProcess = $null
-$notepad = $null
+$testProcess = $null
 
 # Step 1: Verify ETW Session Cleanup
 Write-Host ""
@@ -100,7 +109,30 @@ try {
     Write-Host "Debug: Working directory = $hostDir" -ForegroundColor Gray
     Write-Host "Debug: File exists = $(Test-Path $hostPath)" -ForegroundColor Gray
 
-    Start-Process $hostPath -Verb RunAs
+    # Create log files directory with timestamp
+    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+    $logDir = "C:/Temp/ProcTailTest/logs/$timestamp"
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
+    Write-Host "Log directory: $logDir" -ForegroundColor Gray
+
+    # Start Host process with admin privileges and redirect output to file only
+    # Note: When using -Verb RunAs, -RedirectStandardOutput/Error cannot be used directly
+    # We'll use a wrapper script approach that redirects to file without showing on console
+    $hostLogPath = "$logDir/host.log"
+    $hostErrorPath = "$logDir/host-error.log"
+    
+    # Create a temporary script to run the host with output redirection
+    $hostWrapperScript = @"
+# Redirect all output to file without showing on console
+& '$hostPath' > '$hostLogPath' 2>&1
+"@
+    $wrapperPath = "$logDir/host-wrapper.ps1"
+    $hostWrapperScript | Out-File -FilePath $wrapperPath -Encoding utf8
+    
+    # Start Host process with admin privileges
+    $hostProcess = Start-Process pwsh.exe -ArgumentList "-WindowStyle", "Hidden", "-File", $wrapperPath -Verb RunAs -PassThru
     
     # Wait for initialization
     Write-Host "Waiting for Host initialization..." -ForegroundColor Gray
@@ -138,55 +170,128 @@ catch {
     exit 1
 }
 
-# Step 3: Start Notepad and monitoring
+# Step 3: Start test-process and monitoring
 Write-Host ""
-Write-Host "Step 3: Starting Notepad and monitoring..." -ForegroundColor Cyan
+Write-Host "Step 3: Starting test-process and monitoring..." -ForegroundColor Cyan
+
+$testProcessPath = "C:/Temp/ProcTailTest/tools/test-process.exe"
+if (-not (Test-Path $testProcessPath)) {
+    Write-Host "ERROR: test-process.exe not found at: $testProcessPath" -ForegroundColor Red
+    Write-Host "Please run the shell script first to build and copy files." -ForegroundColor Yellow
+    Read-Host "Press Enter to exit"
+    exit 1
+}
 
 try {
-    $notepad = Start-Process -FilePath "notepad.exe" -PassThru
-    $notepadPid = $notepad.Id
-    Write-Host "Notepad started with PID: $notepadPid" -ForegroundColor Green
+    # Start test-process with continuous file operations for 30 seconds
+    # Use C:/Temp/ProcTailTest/TestFiles directory instead of system temp to avoid exclusion filters
+    $testFilesDir = "C:/Temp/ProcTailTest/TestFiles"
+    if (-not (Test-Path $testFilesDir)) {
+        New-Item -ItemType Directory -Path $testFilesDir -Force | Out-Null
+    }
     
-    # Add to monitoring
-    Write-Host "Adding Notepad to monitoring..." -ForegroundColor Gray
-    $addResult = & $cliPath add --pid $notepadPid --tag $Tag 2>&1
-    Write-Host "Add result: $addResult" -ForegroundColor Gray
+    Write-Host "Starting test-process for continuous file operations..." -ForegroundColor Gray
+    $testProcessArgs = "-duration", "30s", "-interval", "2s", "-verbose", "-dir", $testFilesDir, "continuous"
+    $testProcessLogPath = "$logDir/test-process.log"
+    $testProcessErrorPath = "$logDir/test-process-error.log"
+    $testProcess = Start-Process -FilePath $testProcessPath -ArgumentList $testProcessArgs -RedirectStandardOutput $testProcessLogPath -RedirectStandardError $testProcessErrorPath -PassThru
+    if ($testProcess -and $testProcess.Id) {
+        $testProcessPid = $testProcess.Id
+        Write-Host "test-process started with PID: $testProcessPid" -ForegroundColor Green
+        
+        # Wait a moment for the process to initialize
+        Start-Sleep -Seconds 3
+        
+        # Add to monitoring
+        Write-Host "Adding test-process to monitoring..." -ForegroundColor Gray
+        $addResult = & $cliPath add --pid $testProcessPid --tag $Tag 2>&1
+        Write-Host "Add result: $addResult" -ForegroundColor Gray
+        
+        # Verify the addition was successful - increased wait time for ETW initialization
+        Write-Host "Waiting for ETW monitoring to initialize..." -ForegroundColor Gray
+        Start-Sleep -Seconds 5
+        
+        # Verify monitoring is active
+        $listResult = & $cliPath list 2>&1
+        Write-Host "Watch targets after addition: $listResult" -ForegroundColor Gray
+        
+        # Additional verification
+        if ($listResult -match "$testProcessPid.*$Tag") {
+            Write-Host "✓ test-process (PID: $testProcessPid) successfully added to monitoring" -ForegroundColor Green
+        } else {
+            Write-Host "⚠ Warning: test-process may not be properly registered for monitoring" -ForegroundColor Yellow
+            Write-Host "  List output: $listResult" -ForegroundColor Yellow
+        }
+    } else {
+        Write-Host "ERROR: Failed to start test-process" -ForegroundColor Red
+        $testProcessPid = $null
+        $addResult = "Failed to start test-process"
+    }
     
     # Check status
     Start-Sleep -Seconds 2
     $status = & $cliPath status 2>&1
     Write-Host "Status: $status" -ForegroundColor Gray
     
-    Write-Host "Notepad monitoring started" -ForegroundColor Green
+    Write-Host "test-process monitoring started" -ForegroundColor Green
 }
 catch {
-    Write-Host "ERROR with Notepad setup: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "ERROR with test-process setup: $($_.Exception.Message)" -ForegroundColor Red
     Read-Host "Press Enter to exit"
     exit 1
 }
 
-# Step 4: File save test
+# Step 4: Automated file operations test
 Write-Host ""
-Write-Host "Step 4: File save test..." -ForegroundColor Cyan
+Write-Host "Step 4: Automated file operations test..." -ForegroundColor Cyan
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Yellow
-Write-Host "  Please perform the following steps:" -ForegroundColor Yellow
+Write-Host "  Automated Test in Progress" -ForegroundColor Yellow
 Write-Host "========================================" -ForegroundColor Yellow
-Write-Host "1. Switch to the Notepad window" -ForegroundColor White
-Write-Host "2. Type some text" -ForegroundColor White
-Write-Host "3. Press Ctrl+S to save" -ForegroundColor White
-Write-Host "4. Choose any location and filename" -ForegroundColor White
-Write-Host "5. Click Save" -ForegroundColor White
+Write-Host "test-process is performing continuous file operations:" -ForegroundColor White
+Write-Host "• Creating files with write operations" -ForegroundColor White
+Write-Host "• Reading files to generate read events" -ForegroundColor White
+Write-Host "• Deleting files to generate delete events" -ForegroundColor White
+Write-Host "• Operations repeat every 2 seconds for 30 seconds" -ForegroundColor White
 Write-Host ""
 
-Read-Host "Press Enter after you have saved the file in Notepad"
+Write-Host "Waiting for test-process to complete its operations..." -ForegroundColor Gray
+
+# Wait for test-process to complete (30 seconds + some buffer)
+if ($testProcess) {
+    $remainingTime = 35
+    while ($remainingTime -gt 0 -and -not $testProcess.HasExited) {
+        Write-Host "Time remaining: $remainingTime seconds" -ForegroundColor Gray
+        Start-Sleep -Seconds 5
+        $remainingTime -= 5
+    }
+
+    if (-not $testProcess.HasExited) {
+        Write-Host "test-process is still running after 35 seconds. Terminating..." -ForegroundColor Yellow
+        $testProcess | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+} else {
+    Write-Host "test-process was not started - skipping wait" -ForegroundColor Yellow
+    Start-Sleep -Seconds 5  # Still wait a bit for any potential operations
+}
+
+Write-Host "test-process operations completed" -ForegroundColor Green
 
 # Step 5: Check events
 Write-Host ""
 Write-Host "Step 5: Checking captured events..." -ForegroundColor Cyan
 
 Start-Sleep -Seconds 2
-$events = & $cliPath events --tag $Tag 2>&1
+if ($testProcessPid) {
+    $events = & $cliPath events --tag $Tag 2>&1
+} else {
+    $events = "No events to check - test-process failed to start"
+}
+
+# Save events to file for analysis
+$eventsLogPath = "$logDir/events.log"
+$events | Out-File -FilePath $eventsLogPath -Encoding utf8
+Write-Host "Events saved to: $eventsLogPath" -ForegroundColor Gray
 
 Write-Host ""
 Write-Host "================= EVENTS =================" -ForegroundColor Yellow
@@ -194,24 +299,152 @@ Write-Host $events -ForegroundColor White
 Write-Host "==========================================" -ForegroundColor Yellow
 
 # Check if events were captured
-if ($events -and $events.ToString().Contains("FileIO")) {
-    Write-Host "File events detected successfully!" -ForegroundColor Green
+$eventString = $events.ToString()
+$hasFileWrite = $eventString.Contains("FileIO") -and $eventString.Contains("Write")
+$hasFileDelete = $eventString.Contains("FileIO") -and $eventString.Contains("Delete") 
+$hasFileCreate = $eventString.Contains("FileIO") -and $eventString.Contains("Create")
+$hasTestProcessFiles = $eventString.Contains("continuous_$testProcessPid") -or $eventString.Contains("TestFiles")
+
+Write-Host ""
+Write-Host "================= EVENT ANALYSIS =================" -ForegroundColor Cyan
+Write-Host "Events from test-process PID $testProcessPid analysis:" -ForegroundColor White
+Write-Host "• FileIO/Create events: $(if ($hasFileCreate) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileCreate) { 'Green' } else { 'Red' })
+Write-Host "• FileIO/Write events: $(if ($hasFileWrite) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileWrite) { 'Green' } else { 'Red' })
+Write-Host "• FileIO/Delete events: $(if ($hasFileDelete) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileDelete) { 'Green' } else { 'Red' })
+Write-Host "• Test-process files: $(if ($hasTestProcessFiles) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasTestProcessFiles) { 'Green' } else { 'Red' })
+
+# Count total events for this test process
+$eventLines = $eventString -split "`n"
+$testProcessEvents = $eventLines | Where-Object { $_ -match "^\s*\|\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*\|\s*$testProcessPid\s*\|" }
+$testProcessEventCount = ($testProcessEvents | Measure-Object).Count
+
+Write-Host "• Total events for PID $testProcessPid`: $testProcessEventCount" -ForegroundColor White
+Write-Host "=================================================" -ForegroundColor Cyan
+
+if ($events -and ($hasFileWrite -or $hasFileDelete -or $hasFileCreate) -and $hasTestProcessFiles) {
+    Write-Host "✅ File events detected successfully!" -ForegroundColor Green
+    if ($hasFileCreate) {
+        Write-Host "✓ Create events detected" -ForegroundColor Green
+    }
+    if ($hasFileWrite) {
+        Write-Host "✓ Write events detected" -ForegroundColor Green
+    }
+    if ($hasFileDelete) {
+        Write-Host "✓ Delete events detected" -ForegroundColor Green
+    }
     $testSuccess = $true
 } else {
-    Write-Host "No file events detected" -ForegroundColor Yellow
-    Write-Host "This might indicate a filtering or monitoring issue" -ForegroundColor Gray
+    Write-Host "❌ Expected file events not detected" -ForegroundColor Red
+    Write-Host "This indicates a monitoring or filtering issue" -ForegroundColor Yellow
+    
+    # Additional diagnostic information
+    if ($testProcessEventCount -eq 0) {
+        Write-Host "⚠️  No events found for test-process PID $testProcessPid" -ForegroundColor Yellow
+        Write-Host "   This suggests the process monitoring registration failed" -ForegroundColor Gray
+    } else {
+        Write-Host "ℹ️  Found $testProcessEventCount events for PID $testProcessPid but they don't match expected file operations" -ForegroundColor Yellow
+    }
+    
     $testSuccess = $false
 }
+
+# Display log files for debugging
+Write-Host ""
+Write-Host "================= DEBUG LOGS =================" -ForegroundColor Cyan
+
+# Check test-process log
+if (Test-Path $testProcessLogPath) {
+    Write-Host ""
+    Write-Host "test-process log:" -ForegroundColor Yellow
+    Get-Content $testProcessLogPath -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
+} else {
+    Write-Host "test-process log file not found: $testProcessLogPath" -ForegroundColor Red
+}
+
+# Check test-process error log  
+if (Test-Path $testProcessErrorPath) {
+    Write-Host ""
+    Write-Host "test-process error log:" -ForegroundColor Yellow
+    Get-Content $testProcessErrorPath -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
+}
+
+# Check if test files were actually created
+Write-Host ""
+Write-Host "Files created in test directory:" -ForegroundColor Yellow
+if (Test-Path $testFilesDir) {
+    $testFiles = Get-ChildItem $testFilesDir -ErrorAction SilentlyContinue
+    if ($testFiles) {
+        $testFiles | ForEach-Object { Write-Host "  $($_.Name) ($(Get-Date $_.LastWriteTime))" -ForegroundColor White }
+    } else {
+        Write-Host "  No files found in test directory" -ForegroundColor Red
+    }
+} else {
+    Write-Host "  Test directory does not exist: $testFilesDir" -ForegroundColor Red
+}
+
+# # Manual test to verify test-process can create files
+# Write-Host ""
+# Write-Host "Manual test-process verification:" -ForegroundColor Yellow
+# if ($testProcessPid) {
+#     Write-Host "Running a simple file-write test to verify test-process functionality..." -ForegroundColor Gray
+#     $manualTestArgs = "-count", "3", "-verbose", "-dir", $testFilesDir, "file-write"
+#     try {
+#         $manualResult = & $testProcessPath $manualTestArgs 2>&1
+#         Write-Host "Manual test result:" -ForegroundColor Gray
+#         $manualResult | ForEach-Object { Write-Host "  $_" -ForegroundColor White }
+        
+#         # Check if files were created by manual test
+#         Start-Sleep -Seconds 2
+#         $manualFiles = Get-ChildItem $testFilesDir -ErrorAction SilentlyContinue
+#         if ($manualFiles) {
+#             Write-Host "Manual test created files:" -ForegroundColor Green
+#             $manualFiles | ForEach-Object { Write-Host "  $($_.Name)" -ForegroundColor Green }
+#         } else {
+#             Write-Host "Manual test failed to create files" -ForegroundColor Red
+#         }
+#     } catch {
+#         Write-Host "Manual test failed: $($_.Exception.Message)" -ForegroundColor Red
+#     }
+# }
+
+# Check Host process logs (summary only)
+Write-Host ""
+Write-Host "Host Process Status:" -ForegroundColor Yellow
+$hostLogPath = "$logDir/host.log"
+if (Test-Path $hostLogPath) {
+    $hostLogSize = (Get-Item $hostLogPath).Length
+    $hostLogSizeKB = [math]::Round($hostLogSize / 1KB, 2)
+    Write-Host "  Host log saved to: $hostLogPath ($hostLogSizeKB KB)" -ForegroundColor Gray
+    
+    # Check for errors in the log
+    $hostLogContent = Get-Content $hostLogPath -Raw
+    $errorCount = ([regex]::Matches($hostLogContent, "ERROR|Exception|Failed")).Count
+    $warningCount = ([regex]::Matches($hostLogContent, "WARN|Warning")).Count
+    
+    if ($errorCount -gt 0) {
+        Write-Host "  ⚠ Found $errorCount error(s) in Host log" -ForegroundColor Yellow
+    }
+    if ($warningCount -gt 0) {
+        Write-Host "  ⚠ Found $warningCount warning(s) in Host log" -ForegroundColor Yellow
+    }
+    if ($errorCount -eq 0 -and $warningCount -eq 0) {
+        Write-Host "  ✓ No errors or warnings found in Host log" -ForegroundColor Green
+    }
+} else {
+    Write-Host "  Host log file not found: $hostLogPath" -ForegroundColor Red
+}
+
+Write-Host "=============================================" -ForegroundColor Cyan
 
 # Cleanup
 Write-Host ""
 Write-Host "Cleanup..." -ForegroundColor Cyan
 
 if (-not $KeepProcesses) {
-    # Close Notepad
-    if ($notepad -and -not $notepad.HasExited) {
-        $notepad | Stop-Process -Force -ErrorAction SilentlyContinue
-        Write-Host "Notepad closed" -ForegroundColor Gray
+    # Close test-process
+    if ($testProcess -and -not $testProcess.HasExited) {
+        $testProcess | Stop-Process -Force -ErrorAction SilentlyContinue
+        Write-Host "test-process closed" -ForegroundColor Gray
     }
     
     # Stop Host
@@ -252,7 +485,20 @@ if ($testSuccess) {
     Write-Host "TEST COMPLETED WITH ISSUES" -ForegroundColor Red
 }
 Write-Host "===============================================" -ForegroundColor Yellow
+
+# Run log analysis automatically
+Write-Host ""
+Write-Host "Running detailed log analysis..." -ForegroundColor Cyan
+$analyzeScriptPath = "C:/Temp/ProcTailScripts/analyze-logs.ps1"
+if (Test-Path $analyzeScriptPath) {
+    Write-Host ""
+    & $analyzeScriptPath -LogDirectory $logDir
+} else {
+    Write-Host "Log analysis script not found at: $analyzeScriptPath" -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Test files are located at: $testRoot" -ForegroundColor Gray
+Write-Host "Log files are located at: $logDir" -ForegroundColor Gray
 Write-Host ""
 Read-Host "Press Enter to exit"

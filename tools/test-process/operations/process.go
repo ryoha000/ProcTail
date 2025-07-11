@@ -26,6 +26,7 @@ type ProcessConfig struct {
 	Dir      string
 	Verbose  bool
 	Command  string
+	Duration time.Duration
 }
 
 // ExecuteChildProcess creates and manages child processes

@@ -18,6 +18,7 @@ type Config struct {
 	Verbose  bool          `json:"verbose"`
 	Command  string        `json:"command,omitempty"`
 	Ops      []string      `json:"operations,omitempty"`
+	Duration time.Duration `json:"duration,omitempty"`
 }
 
 type Report struct {
@@ -41,6 +42,7 @@ func (r *Report) GetConfig() operations.Config {
 		Interval: r.Config.Interval,
 		Dir:      r.Config.Dir,
 		Verbose:  r.Config.Verbose,
+		Duration: r.Config.Duration,
 	}
 }
 
@@ -51,6 +53,7 @@ func (r *Report) GetProcessConfig() operations.ProcessConfig {
 		Dir:      r.Config.Dir,
 		Verbose:  r.Config.Verbose,
 		Command:  r.Config.Command,
+		Duration: r.Config.Duration,
 	}
 }
 
@@ -62,6 +65,7 @@ func (r *Report) GetMixedConfig() operations.MixedConfig {
 		Verbose:  r.Config.Verbose,
 		Command:  r.Config.Command,
 		Ops:      r.Config.Ops,
+		Duration: r.Config.Duration,
 	}
 }
 
@@ -153,6 +157,7 @@ func main() {
 		ops      = flag.String("operations", "write,read,delete", "実行する操作のリスト (mixed用)")
 		jsonOut  = flag.Bool("json", false, "JSON形式で結果出力")
 		waitKey  = flag.Bool("wait", false, "開始前にキー入力待機")
+		duration = flag.Duration("duration", 0, "継続実行時間 (0=無効)")
 	)
 	flag.Parse()
 
@@ -165,6 +170,7 @@ func main() {
 		fmt.Println("  file-delete   - ファイル削除操作")
 		fmt.Println("  child-process - 子プロセス作成")
 		fmt.Println("  mixed         - 複数操作の組み合わせ")
+		fmt.Println("  continuous    - 継続実行モード (--duration必須)")
 		fmt.Println("")
 		fmt.Println("オプション:")
 		flag.PrintDefaults()
@@ -180,6 +186,7 @@ func main() {
 		Verbose:  *verbose,
 		Command:  *command,
 		Ops:      strings.Split(*ops, ","),
+		Duration: *duration,
 	}
 
 	if *verbose {
@@ -214,6 +221,11 @@ func main() {
 	case "mixed":
 		mixedReport := &MixedReportAdapter{report: &report}
 		err = operations.ExecuteMixed(mixedReport)
+	case "continuous":
+		if config.Duration <= 0 {
+			log.Fatalf("continuous操作には--durationオプションが必要です")
+		}
+		err = operations.ExecuteContinuous(&report)
 	default:
 		log.Fatalf("不明な操作: %s", operation)
 	}
