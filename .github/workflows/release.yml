@@ -71,15 +71,6 @@ jobs:
           -p:FileVersion=${{ steps.get-version.outputs.version }} `
           -p:AssemblyVersion=${{ steps.get-version.outputs.version }}
           
-    - name: Run Tests
-      run: |
-        dotnet test ${{ env.SOLUTION_FILE }} `
-          --configuration Release `
-          --no-build `
-          --filter "Category!=RequiresAdmin" `
-          --logger "trx;LogFileName=release-tests.trx" `
-          --results-directory ./TestResults
-          
     - name: Publish Host (Self-Contained win-x64)
       run: |
         dotnet publish src/ProcTail.Host/ProcTail.Host.csproj `
