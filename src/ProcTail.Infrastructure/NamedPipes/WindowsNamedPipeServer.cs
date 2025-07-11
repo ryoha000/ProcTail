@@ -275,18 +275,28 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                         clientId, requestMessage.Length);
 
                     // IPC要求イベントを発火
-                    var eventArgs = new IpcRequestEventArgs(requestMessage, _cancellationTokenSource.Token);
+                    using var requestCts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+                    var eventArgs = new IpcRequestEventArgs(requestMessage, requestCts.Token);
                     
                     // 応答送信ハンドラーを設定
                     eventArgs.ResponseSender = async (response) =>
                     {
-                        await SendMessageAsync(pipeStream, response, _cancellationTokenSource.Token);
+                        await SendMessageAsync(pipeStream, response, requestCts.Token);
                     };
 
                     RequestReceived?.Invoke(this, eventArgs);
 
-                    // 応答を待機
-                    await eventArgs.WaitForResponseAsync(TimeSpan.FromSeconds(_configuration.ResponseTimeoutSeconds));
+                    try
+                    {
+                        // 応答を待機
+                        await eventArgs.WaitForResponseAsync(TimeSpan.FromSeconds(_configuration.ResponseTimeoutSeconds));
+                    }
+                    catch (TimeoutException)
+                    {
+                        // タイムアウト時はイベントハンドラーをキャンセル
+                        requestCts.Cancel();
+                        throw;
+                    }
                 }
                 catch (OperationCanceledException)
                 {
@@ -391,30 +401,16 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
     /// </summary>
     private static async Task SendMessageAsync(NamedPipeServerStream pipeStream, string message, CancellationToken cancellationToken)
     {
-        try
-        {
-            if (pipeStream.IsConnected)
-            {
-                var messageBytes = Encoding.UTF8.GetBytes(message);
-                var lengthBytes = BitConverter.GetBytes(messageBytes.Length);
+        var messageBytes = Encoding.UTF8.GetBytes(message);
+        var lengthBytes = BitConverter.GetBytes(messageBytes.Length);
 
-                // メッセージ長を送信
-                await pipeStream.WriteAsync(lengthBytes, cancellationToken);
-                
-                // メッセージ本体を送信
-                await pipeStream.WriteAsync(messageBytes, cancellationToken);
-                
-                await pipeStream.FlushAsync(cancellationToken);
-            }
-        }
-        catch (ObjectDisposedException)
-        {
-            // パイプが既に解放されている場合は無視
-        }
-        catch (InvalidOperationException)
-        {
-            // パイプが無効な状態の場合は無視
-        }
+        // メッセージ長を送信
+        await pipeStream.WriteAsync(lengthBytes, cancellationToken);
+        
+        // メッセージ本体を送信
+        await pipeStream.WriteAsync(messageBytes, cancellationToken);
+        
+        await pipeStream.FlushAsync(cancellationToken);
     }
 
     /// <summary>

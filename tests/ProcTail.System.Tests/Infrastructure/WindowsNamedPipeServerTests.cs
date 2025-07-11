@@ -272,11 +272,19 @@ public class WindowsNamedPipeServerTests
 
         using var server = new WindowsNamedPipeServer(_logger, shortTimeoutConfig);
         
+        var handlerCancelled = false;
         server.RequestReceived += async (sender, args) =>
         {
-            // Simulate slow processing that exceeds timeout
-            await Task.Delay(TimeSpan.FromSeconds(2));
-            await args.SendResponseAsync(@"{""Success"": true}");
+            try
+            {
+                // Simulate slow processing that exceeds timeout
+                await Task.Delay(TimeSpan.FromSeconds(2), args.CancellationToken);
+                await args.SendResponseAsync(@"{""Success"": true}");
+            }
+            catch (OperationCanceledException)
+            {
+                handlerCancelled = true;
+            }
         };
 
         await server.StartAsync();
@@ -294,11 +302,11 @@ public class WindowsNamedPipeServerTests
         await client.WriteAsync(requestBytes);
         await client.FlushAsync();
 
-        // Wait for timeout to occur and check logs
+        // Wait for timeout and cancellation to occur
         await Task.Delay(TimeSpan.FromSeconds(3));
 
-        // Check if timeout was logged (it should be in error logs)
-        true.Should().BeTrue("Timeout should occur for slow operations");
+        // Assert
+        handlerCancelled.Should().BeTrue("Handler should be cancelled when timeout occurs");
 
         await server.StopAsync();
     }
