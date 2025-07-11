@@ -95,19 +95,36 @@ public class WindowsPlatformTest
         }
         else
         {
-            // Windows環境では管理者権限に応じてUAC要求または実行される
-            // このテストではUAC要求の動作をテストするため、実際のUACは表示させない
-            try
+            // Windows環境では管理者権限がない場合はIgnoreされるべき
+            var isAdmin = IsRunningAsAdministrator();
+            if (!isAdmin)
             {
-                // 管理者権限がない場合はUAC要求が発生し、プロセスが終了する
-                PlatformChecks.RequireWindowsAndAdministrator();
+                var ex = Assert.Throws<IgnoreException>(() => PlatformChecks.RequireWindowsAndAdministrator());
+                ex.Message.Should().Contain("管理者権限が必要です");
+            }
+            else
+            {
+                // 管理者権限がある場合は正常に実行される
+                Assert.DoesNotThrow(() => PlatformChecks.RequireWindowsAndAdministrator());
                 TestContext.WriteLine("管理者権限でテストが実行されました");
             }
-            catch (Exception ex) when (ex.Message.Contains("test") || ex.GetType().Name == "ExitException")
-            {
-                // テスト環境ではEnvironment.Exit(0)が呼ばれるため、このパスは実行されない可能性がある
-                TestContext.WriteLine("UACプロンプトが要求されました");
-            }
+        }
+    }
+
+    private static bool IsRunningAsAdministrator()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            return false;
+
+        try
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            var principal = new WindowsPrincipal(identity);
+            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+        }
+        catch
+        {
+            return false;
         }
     }
 }
