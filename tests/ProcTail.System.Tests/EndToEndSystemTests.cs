@@ -362,9 +362,9 @@ public class EndToEndSystemTests
     [Test]
     public async Task ServiceLifecycle_RealComponents_ShouldStartAndStopCleanly()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
         {
-            Assert.Ignore("このテストはWindows環境でのみ実行されます");
+            Assert.Ignore("このテストはWindows環境で管理者権限が必要です");
             return;
         }
 
@@ -400,9 +400,9 @@ public class EndToEndSystemTests
     [Test]
     public async Task MemoryAndResourceManagement_LongRunning_ShouldNotLeak()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
         {
-            Assert.Ignore("このテストはWindows環境でのみ実行されます");
+            Assert.Ignore("このテストはWindows環境で管理者権限が必要です");
             return;
         }
 

@@ -103,6 +103,11 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _isMonitoring = true;
             _logger.LogInformation("ETW監視が正常に開始されました");
         }
+        catch (UnauthorizedAccessException)
+        {
+            // 管理者権限エラーは再スロー（テストで検証される）
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "ETW監視開始中にエラーが発生しました");

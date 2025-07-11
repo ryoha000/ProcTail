@@ -292,6 +292,11 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                 {
                     break;
                 }
+                catch (TimeoutException ex)
+                {
+                    _logger.LogError(ex, "クライアント通信中にエラーが発生しました (ClientId: {ClientId})", clientId);
+                    break;
+                }
                 catch (IOException ex) when (ex.Message.Contains("pipe"))
                 {
                     _logger.LogDebug("パイプが切断されました (ClientId: {ClientId})", clientId);
@@ -386,16 +391,30 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
     /// </summary>
     private static async Task SendMessageAsync(NamedPipeServerStream pipeStream, string message, CancellationToken cancellationToken)
     {
-        var messageBytes = Encoding.UTF8.GetBytes(message);
-        var lengthBytes = BitConverter.GetBytes(messageBytes.Length);
+        try
+        {
+            if (pipeStream.IsConnected)
+            {
+                var messageBytes = Encoding.UTF8.GetBytes(message);
+                var lengthBytes = BitConverter.GetBytes(messageBytes.Length);
 
-        // メッセージ長を送信
-        await pipeStream.WriteAsync(lengthBytes, cancellationToken);
-        
-        // メッセージ本体を送信
-        await pipeStream.WriteAsync(messageBytes, cancellationToken);
-        
-        await pipeStream.FlushAsync(cancellationToken);
+                // メッセージ長を送信
+                await pipeStream.WriteAsync(lengthBytes, cancellationToken);
+                
+                // メッセージ本体を送信
+                await pipeStream.WriteAsync(messageBytes, cancellationToken);
+                
+                await pipeStream.FlushAsync(cancellationToken);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // パイプが既に解放されている場合は無視
+        }
+        catch (InvalidOperationException)
+        {
+            // パイプが無効な状態の場合は無視
+        }
     }
 
     /// <summary>
