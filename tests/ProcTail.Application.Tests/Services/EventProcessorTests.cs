@@ -326,6 +326,9 @@ public class EventProcessorTests
         processEvent.ProviderName.Should().Be("Microsoft-Windows-Kernel-Process");
         processEvent.EventName.Should().Be("Process/End");
 
+        // プロセス除去は非同期で実行されるため、少し待つ
+        await Task.Delay(50);
+
         // プロセス除去が呼ばれることを確認
         _mockWatchTargetManager.Verify(x => x.RemoveTarget(1234), Times.Once);
     }
