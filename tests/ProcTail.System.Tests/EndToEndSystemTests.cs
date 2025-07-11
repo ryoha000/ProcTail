@@ -173,6 +173,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     [Timeout(30000)]
     public async Task CompleteWorkflow_RealWindowsAPIs_ShouldWorkEndToEnd()
     {
@@ -236,6 +237,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     [Timeout(30000)]
     public async Task ProcessMonitoring_ChildProcessCreation_ShouldCaptureEvents()
     {
@@ -295,6 +297,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     [Timeout(30000)]
     public async Task IpcCommunication_RealNamedPipes_ShouldWork()
     {
@@ -364,6 +367,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     [Timeout(30000)]
     public async Task ServiceLifecycle_RealComponents_ShouldStartAndStopCleanly()
     {
@@ -403,6 +407,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     [Timeout(60000)]
     public async Task MemoryAndResourceManagement_LongRunning_ShouldNotLeak()
     {

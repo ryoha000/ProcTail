@@ -85,6 +85,7 @@ public class WindowsPlatformTest
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     public void PlatformChecks_RequireWindowsAndAdmin_ShouldWork()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))

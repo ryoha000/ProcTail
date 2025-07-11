@@ -65,6 +65,7 @@ public class WindowsEtwEventProviderTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     public async Task StartMonitoringAsync_WithAdministratorRights_ShouldSucceed()
     {
         // Skip if not on Windows or not admin
@@ -117,6 +118,7 @@ public class WindowsEtwEventProviderTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     public async Task ETWEventCollection_RealFileOperations_ShouldCaptureEvents()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
@@ -169,6 +171,7 @@ public class WindowsEtwEventProviderTests
     }
 
     [Test]
+    [Category("RequiresAdmin")]
     [RequiresWindowsAndAdministrator] 
     public async Task ETWEventCollection_ProcessEvents_ShouldCaptureProcessCreation()
     {
