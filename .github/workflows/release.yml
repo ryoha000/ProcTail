@@ -57,20 +57,20 @@ jobs:
       
     - name: Build Release
       run: |
-        dotnet build ${{ env.SOLUTION_FILE }} \
-          --configuration Release \
-          --no-restore \
-          -p:Version=${{ steps.get-version.outputs.version }} \
-          -p:FileVersion=${{ steps.get-version.outputs.version }} \
+        dotnet build ${{ env.SOLUTION_FILE }} `
+          --configuration Release `
+          --no-restore `
+          -p:Version=${{ steps.get-version.outputs.version }} `
+          -p:FileVersion=${{ steps.get-version.outputs.version }} `
           -p:AssemblyVersion=${{ steps.get-version.outputs.version }}
           
     - name: Run Tests
       run: |
-        dotnet test ${{ env.SOLUTION_FILE }} \
-          --configuration Release \
-          --no-build \
-          --filter "Category!=RequiresAdmin" \
-          --logger "trx;LogFileName=release-tests.trx" \
+        dotnet test ${{ env.SOLUTION_FILE }} `
+          --configuration Release `
+          --no-build `
+          --filter "Category!=RequiresAdmin" `
+          --logger "trx;LogFileName=release-tests.trx" `
           --results-directory ./TestResults
           
     - name: Publish Host (Self-Contained win-x64)
