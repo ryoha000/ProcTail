@@ -125,64 +125,11 @@ jobs:
           
     - name: Create Release Package Structure
       shell: powershell
-      run: |
-        $version = "${{ steps.get-version.outputs.version }}"
-        
-        # ディレクトリ作成
-        New-Item -ItemType Directory -Force -Path "./release-packages"
-        
-        # Self-contained版のパッケージ作成
-        $selfContainedDir = "./release-packages/ProcTail-$version-self-contained"
-        New-Item -ItemType Directory -Force -Path $selfContainedDir
-        New-Item -ItemType Directory -Force -Path "$selfContainedDir/host"
-        New-Item -ItemType Directory -Force -Path "$selfContainedDir/cli"
-        
-        # Self-contained版ファイルコピー
-        Copy-Item -Path "./publish/host-win-x64/*" -Destination "$selfContainedDir/host/" -Recurse
-        Copy-Item -Path "./publish/cli-win-x64/*" -Destination "$selfContainedDir/cli/" -Recurse
-        
-        # Framework-dependent版のパッケージ作成
-        $frameworkDir = "./release-packages/ProcTail-$version-framework-dependent"
-        New-Item -ItemType Directory -Force -Path $frameworkDir
-        New-Item -ItemType Directory -Force -Path "$frameworkDir/host"
-        New-Item -ItemType Directory -Force -Path "$frameworkDir/cli"
-        
-        # Framework-dependent版ファイルコピー
-        Copy-Item -Path "./publish/host-framework-dependent/*" -Destination "$frameworkDir/host/" -Recurse
-        Copy-Item -Path "./publish/cli-framework-dependent/*" -Destination "$frameworkDir/cli/" -Recurse
-        
-        # READMEコピー
-        if (Test-Path "README.md") {
-          Copy-Item -Path "README.md" -Destination "$selfContainedDir/"
-          Copy-Item -Path "README.md" -Destination "$frameworkDir/"
-        }
-        
-        Write-Host "Release packages created successfully"
+      run: .github/scripts/create-release-packages.ps1 -Version "${{ steps.get-version.outputs.version }}"
         
     - name: Create ZIP Archives
       shell: powershell
-      run: |
-        $version = "${{ steps.get-version.outputs.version }}"
-        
-        # Compress-Archive を使用してZIPファイル作成
-        Compress-Archive -Path "./release-packages/ProcTail-$version-self-contained/*" -DestinationPath "./release-packages/ProcTail-$version-self-contained-win-x64.zip"
-        Compress-Archive -Path "./release-packages/ProcTail-$version-framework-dependent/*" -DestinationPath "./release-packages/ProcTail-$version-framework-dependent-win-x64.zip"
-        
-        # チェックサム計算
-        $selfContainedHash = (Get-FileHash "./release-packages/ProcTail-$version-self-contained-win-x64.zip" -Algorithm SHA256).Hash
-        $frameworkHash = (Get-FileHash "./release-packages/ProcTail-$version-framework-dependent-win-x64.zip" -Algorithm SHA256).Hash
-        
-        # チェックサムファイル作成
-        $checksums = @"
-SHA256 Checksums for ProcTail $version
-
-ProcTail-$version-self-contained-win-x64.zip: $selfContainedHash
-ProcTail-$version-framework-dependent-win-x64.zip: $frameworkHash
-"@
-        
-        $checksums | Out-File -FilePath "./release-packages/checksums.txt" -Encoding UTF8
-        
-        Write-Host "ZIP archives created with checksums"
+      run: .github/scripts/create-zip-archives.ps1 -Version "${{ steps.get-version.outputs.version }}"
         
     - name: Upload Release Artifacts
       uses: actions/upload-artifact@v4
@@ -211,72 +158,7 @@ ProcTail-$version-framework-dependent-win-x64.zip: $frameworkHash
         
     - name: Generate Release Notes
       id: release-notes
-      run: |
-        version="${{ needs.build-release.outputs.version }}"
-        
-        # 前回のタグを取得
-        previous_tag=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
-        
-        echo "# ProcTail $version Release" > release_notes.md
-        echo "" >> release_notes.md
-        
-        if [[ -n "$previous_tag" ]]; then
-          echo "## Changes since $previous_tag" >> release_notes.md
-          echo "" >> release_notes.md
-          
-          # コミットログから変更履歴を生成
-          git log --oneline --no-merges $previous_tag..HEAD | while read line; do
-            echo "- $line" >> release_notes.md
-          done
-        else
-          echo "## Initial Release" >> release_notes.md
-          echo "" >> release_notes.md
-          echo "This is the initial release of ProcTail." >> release_notes.md
-        fi
-        
-        echo "" >> release_notes.md
-        echo "## Installation" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "### Self-Contained Version (推奨)" >> release_notes.md
-        echo "- .NET Runtimeが不要" >> release_notes.md
-        echo "- \`ProcTail-$version-self-contained-win-x64.zip\` をダウンロード" >> release_notes.md
-        echo "- 展開後、管理者権限でサービスをインストール" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "### Framework-Dependent Version" >> release_notes.md
-        echo "- .NET 8 Runtime が必要" >> release_notes.md
-        echo "- \`ProcTail-$version-framework-dependent-win-x64.zip\` をダウンロード" >> release_notes.md
-        echo "- 展開後、管理者権限でサービスをインストール" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "## Usage" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "サービス開始: \`sc start ProcTail\`" >> release_notes.md
-        echo "CLIツール: \`cli/ProcTail.Cli.exe --help\`" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "## Requirements" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "- Windows 10/11 or Windows Server 2016+" >> release_notes.md
-        echo "- 管理者権限 (ETW監視のため)" >> release_notes.md
-        echo "- .NET 8 Runtime (Framework-dependent版のみ)" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "## File Checksums" >> release_notes.md
-        echo "" >> release_notes.md
-        echo "\`\`\`" >> release_notes.md
-        cat ./release-artifacts/checksums.txt >> release_notes.md
-        echo "\`\`\`" >> release_notes.md
-        
-        # ファイルサイズ情報も追加
-        echo "" >> release_notes.md
-        echo "## File Sizes" >> release_notes.md
-        echo "" >> release_notes.md
-        for file in ./release-artifacts/*.zip; do
-          if [[ -f "$file" ]]; then
-            size=$(du -h "$file" | cut -f1)
-            filename=$(basename "$file")
-            echo "- $filename: $size" >> release_notes.md
-          fi
-        done
-        
-        echo "Release notes generated successfully"
+      run: .github/scripts/generate-release-notes.sh "${{ needs.build-release.outputs.version }}"
         
     - name: Create Release
       uses: softprops/action-gh-release@v1
