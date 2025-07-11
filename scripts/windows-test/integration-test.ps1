@@ -117,21 +117,22 @@ try {
     }
     Write-Host "Log directory: $logDir" -ForegroundColor Gray
 
-    # Start Host process with admin privileges and redirect output
+    # Start Host process with admin privileges and redirect output to file only
     # Note: When using -Verb RunAs, -RedirectStandardOutput/Error cannot be used directly
-    # We'll use a wrapper script approach
+    # We'll use a wrapper script approach that redirects to file without showing on console
     $hostLogPath = "$logDir/host.log"
     $hostErrorPath = "$logDir/host-error.log"
     
     # Create a temporary script to run the host with output redirection
     $hostWrapperScript = @"
-& '$hostPath' 2>&1 | Tee-Object -FilePath '$hostLogPath'
+# Redirect all output to file without showing on console
+& '$hostPath' > '$hostLogPath' 2>&1
 "@
     $wrapperPath = "$logDir/host-wrapper.ps1"
     $hostWrapperScript | Out-File -FilePath $wrapperPath -Encoding utf8
     
     # Start Host process with admin privileges
-    $hostProcess = Start-Process pwsh.exe -ArgumentList "-File", $wrapperPath -Verb RunAs -PassThru -WindowStyle Hidden
+    $hostProcess = Start-Process pwsh.exe -ArgumentList "-WindowStyle", "Hidden", "-File", $wrapperPath -Verb RunAs -PassThru
     
     # Wait for initialization
     Write-Host "Waiting for Host initialization..." -ForegroundColor Gray
@@ -406,26 +407,31 @@ if (Test-Path $testFilesDir) {
 #     }
 # }
 
-# Check Host process logs
+# Check Host process logs (summary only)
 Write-Host ""
-Write-Host "ProcTail.Host logs:" -ForegroundColor Yellow
+Write-Host "Host Process Status:" -ForegroundColor Yellow
 $hostLogPath = "$logDir/host.log"
 if (Test-Path $hostLogPath) {
-    Write-Host "Host log file: $hostLogPath" -ForegroundColor Gray
-    Write-Host "--- Host Log Content (last 50 lines) ---" -ForegroundColor Gray
-    Get-Content $hostLogPath -Tail 50 -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
-    Write-Host "--- End Host Log ---" -ForegroundColor Gray
+    $hostLogSize = (Get-Item $hostLogPath).Length
+    $hostLogSizeKB = [math]::Round($hostLogSize / 1KB, 2)
+    Write-Host "  Host log saved to: $hostLogPath ($hostLogSizeKB KB)" -ForegroundColor Gray
+    
+    # Check for errors in the log
+    $hostLogContent = Get-Content $hostLogPath -Raw
+    $errorCount = ([regex]::Matches($hostLogContent, "ERROR|Exception|Failed")).Count
+    $warningCount = ([regex]::Matches($hostLogContent, "WARN|Warning")).Count
+    
+    if ($errorCount -gt 0) {
+        Write-Host "  ⚠ Found $errorCount error(s) in Host log" -ForegroundColor Yellow
+    }
+    if ($warningCount -gt 0) {
+        Write-Host "  ⚠ Found $warningCount warning(s) in Host log" -ForegroundColor Yellow
+    }
+    if ($errorCount -eq 0 -and $warningCount -eq 0) {
+        Write-Host "  ✓ No errors or warnings found in Host log" -ForegroundColor Green
+    }
 } else {
     Write-Host "  Host log file not found: $hostLogPath" -ForegroundColor Red
-    Write-Host "  Checking for any log directories..." -ForegroundColor Yellow
-    $parentLogDir = "C:/Temp/ProcTailTest/logs"
-    if (Test-Path $parentLogDir) {
-        $logDirs = Get-ChildItem $parentLogDir -Directory | Sort-Object Name -Descending
-        if ($logDirs) {
-            Write-Host "  Found log directories:" -ForegroundColor Yellow
-            $logDirs | Select-Object -First 5 | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
-        }
-    }
 }
 
 Write-Host "=============================================" -ForegroundColor Cyan
@@ -479,7 +485,20 @@ if ($testSuccess) {
     Write-Host "TEST COMPLETED WITH ISSUES" -ForegroundColor Red
 }
 Write-Host "===============================================" -ForegroundColor Yellow
+
+# Run log analysis automatically
+Write-Host ""
+Write-Host "Running detailed log analysis..." -ForegroundColor Cyan
+$analyzeScriptPath = "C:/Temp/ProcTailScripts/analyze-logs.ps1"
+if (Test-Path $analyzeScriptPath) {
+    Write-Host ""
+    & $analyzeScriptPath -LogDirectory $logDir
+} else {
+    Write-Host "Log analysis script not found at: $analyzeScriptPath" -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Test files are located at: $testRoot" -ForegroundColor Gray
+Write-Host "Log files are located at: $logDir" -ForegroundColor Gray
 Write-Host ""
 Read-Host "Press Enter to exit"

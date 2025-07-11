@@ -110,32 +110,39 @@ if ($EventsLogFile -and (Test-Path $EventsLogFile)) {
 }
 # ログディレクトリから検索する場合
 else {
-    # integration-test.ps1の出力ログを探す
-    $testOutputFiles = @(
-        "integration-test-output.log",
-        "test-output.log",
-        "console-output.log"
-    )
-    
-    foreach ($file in $testOutputFiles) {
-        $fullPath = Join-Path $LogDirectory $file
-        if (Test-Path $fullPath) {
-            Write-Host "Found test output file: $file" -ForegroundColor Gray
-            $eventsContent = Extract-EventsFromTestOutput -OutputFile $fullPath
-            if ($eventsContent) {
-                Write-Host "Extracted events from test output" -ForegroundColor Green
-                break
+    # まず events.log を探す（integration-test.ps1が作成）
+    $eventsLogPath = Join-Path $LogDirectory "events.log"
+    if (Test-Path $eventsLogPath) {
+        $eventsContent = Get-Content $eventsLogPath -Raw -Encoding UTF8
+        Write-Host "Reading events from: events.log" -ForegroundColor Gray
+    } else {
+        # integration-test.ps1の出力ログを探す
+        $testOutputFiles = @(
+            "integration-test-output.log",
+            "test-output.log",
+            "console-output.log"
+        )
+        
+        foreach ($file in $testOutputFiles) {
+            $fullPath = Join-Path $LogDirectory $file
+            if (Test-Path $fullPath) {
+                Write-Host "Found test output file: $file" -ForegroundColor Gray
+                $eventsContent = Extract-EventsFromTestOutput -OutputFile $fullPath
+                if ($eventsContent) {
+                    Write-Host "Extracted events from test output" -ForegroundColor Green
+                    break
+                }
             }
         }
-    }
-    
-    # イベントログファイルを直接探す
-    if (-not $eventsContent) {
-        $eventFiles = Get-ChildItem $LogDirectory -Filter "*events*.log" -ErrorAction SilentlyContinue
-        if ($eventFiles) {
-            $eventFile = $eventFiles | Select-Object -First 1
-            $eventsContent = Get-Content $eventFile.FullName -Raw -Encoding UTF8
-            Write-Host "Reading events from: $($eventFile.Name)" -ForegroundColor Gray
+        
+        # イベントログファイルを直接探す
+        if (-not $eventsContent) {
+            $eventFiles = Get-ChildItem $LogDirectory -Filter "*events*.log" -ErrorAction SilentlyContinue
+            if ($eventFiles) {
+                $eventFile = $eventFiles | Select-Object -First 1
+                $eventsContent = Get-Content $eventFile.FullName -Raw -Encoding UTF8
+                Write-Host "Reading events from: $($eventFile.Name)" -ForegroundColor Gray
+            }
         }
     }
 }
