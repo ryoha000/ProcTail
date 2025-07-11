@@ -129,8 +129,27 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
             // 実行中のクライアントタスクの完了を待機
             lock (_lock)
             {
-                Task.WaitAll(_clientTasks.ToArray(), TimeSpan.FromSeconds(3));
-                _clientTasks.Clear();
+                try
+                {
+                    var clientTasks = _clientTasks.ToArray();
+                    if (clientTasks.Length > 0)
+                    {
+                        Task.WaitAll(clientTasks, TimeSpan.FromSeconds(3));
+                    }
+                }
+                catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is TaskCanceledException))
+                {
+                    // TaskCanceledExceptionは正常な停止処理なのでログに記録するだけ
+                    _logger.LogDebug("クライアントタスクがキャンセルされました（正常な停止処理）");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "クライアントタスクの停止待機中にエラーが発生しました");
+                }
+                finally
+                {
+                    _clientTasks.Clear();
+                }
             }
 
             _isRunning = false;

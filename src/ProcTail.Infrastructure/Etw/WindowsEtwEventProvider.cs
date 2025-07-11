@@ -170,6 +170,10 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
                 {
                     _logger.LogWarning("ETWセッションタスクの停止がタイムアウトしました");
                 }
+                catch (TaskCanceledException)
+                {
+                    _logger.LogDebug("ETWセッションタスクがキャンセルされました（正常な停止処理）");
+                }
                 _sessionTasks.Clear();
             }
 

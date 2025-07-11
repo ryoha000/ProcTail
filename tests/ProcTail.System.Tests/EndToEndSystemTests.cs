@@ -260,20 +260,30 @@ public class EndToEndSystemTests
             // Act: Create a child process
             using var process = new Process();
             process.StartInfo.FileName = "cmd.exe";
-            process.StartInfo.Arguments = "/c echo Hello World & timeout /t 1";
+            process.StartInfo.Arguments = "/c echo Hello World & timeout /t 2";
             process.StartInfo.UseShellExecute = false;
             process.StartInfo.CreateNoWindow = true;
             process.StartInfo.RedirectStandardOutput = true;
 
+            TestContext.WriteLine($"Starting child process from parent PID: {currentProcessId}");
             process.Start();
             var childProcessId = process.Id;
+            TestContext.WriteLine($"Child process started with PID: {childProcessId}");
             
             await process.WaitForExitAsync();
-            await Task.Delay(1000); // Wait for ETW processing
+            TestContext.WriteLine($"Child process {childProcessId} exited");
+            await Task.Delay(2000); // Extended wait for ETW processing
 
             // Assert
             var events = await _procTailService.GetRecordedEventsAsync(tagName);
-            events.Should().NotBeEmpty();
+            TestContext.WriteLine($"Total events captured: {events.Count}");
+            
+            foreach (var evt in events)
+            {
+                TestContext.WriteLine($"Event: {evt.GetType().Name}, ProcessId: {evt.ProcessId}, Timestamp: {evt.Timestamp}");
+            }
+            
+            events.Should().NotBeEmpty("Should capture some events from process monitoring");
 
             var processEvents = events.Where(e => 
                 e.GetType().Name.Contains("Process", StringComparison.OrdinalIgnoreCase))
@@ -775,6 +785,10 @@ public class EndToEndSystemTests
     {
         // test-process実行可能ファイルを探す
         var currentDir = Environment.CurrentDirectory;
+        
+        // プロジェクトルートディレクトリを探す
+        var projectRoot = FindProjectRoot(currentDir);
+        
         var possiblePaths = new[]
         {
             // テストディレクトリ内のtest-processファイル（最優先）
@@ -785,6 +799,10 @@ public class EndToEndSystemTests
             Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "test-process.exe"),
             Path.Combine(Directory.GetParent(currentDir)?.FullName ?? currentDir, "test-process"),
             
+            // プロジェクトルートからのtools/test-process ディレクトリ内
+            projectRoot != null ? Path.Combine(projectRoot, "tools", "test-process", "test-process.exe") : null,
+            projectRoot != null ? Path.Combine(projectRoot, "tools", "test-process", "test-process") : null,
+            
             // tools/test-process ディレクトリ内
             Path.Combine(currentDir, "tools", "test-process", "test-process.exe"),
             Path.Combine(currentDir, "tools", "test-process", "test-process"),
@@ -792,7 +810,7 @@ public class EndToEndSystemTests
             // 相対パスでtools/test-processを確認
             Path.Combine("..", "..", "..", "tools", "test-process", "test-process.exe"),
             Path.Combine("..", "..", "..", "tools", "test-process", "test-process"),
-        };
+        }.Where(p => p != null).ToArray();
 
         TestContext.WriteLine($"test-process実行可能ファイルを検索中... (作業ディレクトリ: {Environment.CurrentDirectory})");
 
@@ -886,5 +904,22 @@ public class EndToEndSystemTests
 
         // フォールバック: エラーとして例外を投げる
         throw new FileNotFoundException("Host実行可能ファイル（ProcTail.Host.dll、ProcTail.Host.exe、または ProcTail.Host）が見つかりません。publishされたファイルがテストディレクトリにコピーされているか確認してください。");
+    }
+
+    private string? FindProjectRoot(string startDirectory)
+    {
+        var current = new DirectoryInfo(startDirectory);
+        while (current != null)
+        {
+            // .slnファイルまたはDirectory.Build.propsファイルが存在するディレクトリをプロジェクトルートと判定
+            if (current.GetFiles("*.sln").Any() || 
+                current.GetFiles("Directory.Build.props").Any() ||
+                (current.GetDirectories("src").Any() && current.GetDirectories("tools").Any()))
+            {
+                return current.FullName;
+            }
+            current = current.Parent;
+        }
+        return null;
     }
 }
