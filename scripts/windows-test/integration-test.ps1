@@ -117,10 +117,21 @@ try {
     }
     Write-Host "Log directory: $logDir" -ForegroundColor Gray
 
-    # Start Host process with admin privileges 
-    # Note: When using -Verb RunAs, -WorkingDirectory may not work as expected
-    # Instead, use the executable's directory as the starting point
-    $hostProcess = Start-Process $hostPath -Verb RunAs -PassThru
+    # Start Host process with admin privileges and redirect output
+    # Note: When using -Verb RunAs, -RedirectStandardOutput/Error cannot be used directly
+    # We'll use a wrapper script approach
+    $hostLogPath = "$logDir/host.log"
+    $hostErrorPath = "$logDir/host-error.log"
+    
+    # Create a temporary script to run the host with output redirection
+    $hostWrapperScript = @"
+& '$hostPath' 2>&1 | Tee-Object -FilePath '$hostLogPath'
+"@
+    $wrapperPath = "$logDir/host-wrapper.ps1"
+    $hostWrapperScript | Out-File -FilePath $wrapperPath -Encoding utf8
+    
+    # Start Host process with admin privileges
+    $hostProcess = Start-Process pwsh.exe -ArgumentList "-File", $wrapperPath -Verb RunAs -PassThru -WindowStyle Hidden
     
     # Wait for initialization
     Write-Host "Waiting for Host initialization..." -ForegroundColor Gray
@@ -275,6 +286,11 @@ if ($testProcessPid) {
 } else {
     $events = "No events to check - test-process failed to start"
 }
+
+# Save events to file for analysis
+$eventsLogPath = "$logDir/events.log"
+$events | Out-File -FilePath $eventsLogPath -Encoding utf8
+Write-Host "Events saved to: $eventsLogPath" -ForegroundColor Gray
 
 Write-Host ""
 Write-Host "================= EVENTS =================" -ForegroundColor Yellow
