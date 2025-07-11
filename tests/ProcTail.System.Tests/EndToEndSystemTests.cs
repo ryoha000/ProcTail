@@ -98,6 +98,7 @@ public class EndToEndSystemTests
     [Test]
     [Category("RequiresAdmin")]
     [Category("EndToEnd")]
+    [Timeout(60000)]
     public async Task ProcTailHost_TestProcessMonitoring_ShouldDetectFileWriteEvents()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
@@ -132,7 +133,7 @@ public class EndToEndSystemTests
             
             // 5. イベントが記録されるまで待機
             TestContext.WriteLine("5. イベント処理完了を確認中...");
-            await Task.Delay(3000);
+            await Task.Delay(1000);
             
             // 6. 記録されたイベントを取得・検証
             TestContext.WriteLine("6. 記録されたイベントを取得・検証中...");
@@ -172,6 +173,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Timeout(30000)]
     public async Task CompleteWorkflow_RealWindowsAPIs_ShouldWorkEndToEnd()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
@@ -234,6 +236,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Timeout(30000)]
     public async Task ProcessMonitoring_ChildProcessCreation_ShouldCaptureEvents()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
@@ -292,6 +295,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Timeout(30000)]
     public async Task IpcCommunication_RealNamedPipes_ShouldWork()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
@@ -360,6 +364,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Timeout(30000)]
     public async Task ServiceLifecycle_RealComponents_ShouldStartAndStopCleanly()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
@@ -398,6 +403,7 @@ public class EndToEndSystemTests
     }
 
     [Test]
+    [Timeout(60000)]
     public async Task MemoryAndResourceManagement_LongRunning_ShouldNotLeak()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
@@ -499,8 +505,8 @@ public class EndToEndSystemTests
         hostProcess.Start();
         
         // ProcTailHostが起動するまで待機
-        TestContext.WriteLine("ProcTailHostの起動を待機中... (5秒)");
-        await Task.Delay(5000);
+        TestContext.WriteLine("ProcTailHostの起動を待機中... (3秒)");
+        await Task.Delay(3000);
         
         TestContext.WriteLine($"ProcTailHost起動完了 (PID: {hostProcess.Id})");
         return hostProcess;
@@ -602,8 +608,8 @@ public class EndToEndSystemTests
             }
             
             // 監視が有効になるまで待機
-            TestContext.WriteLine("監視設定の反映を待機中... (3秒)");
-            await Task.Delay(3000);
+            TestContext.WriteLine("監視設定の反映を待機中... (1秒)");
+            await Task.Delay(1000);
         }
         catch (Exception ex)
         {
