@@ -409,51 +409,6 @@ if (Test-Path $analyzeScriptPath) {
 
 Write-Host "=================================================" -ForegroundColor Cyan
 
-# Display log files for debugging
-Write-Host ""
-Write-Host "================= DEBUG LOGS =================" -ForegroundColor Cyan
-
-# Check test-process log
-if (Test-Path $testProcessLogPath) {
-    Write-Host ""
-    Write-Host "test-process log:" -ForegroundColor Yellow
-    Get-Content $testProcessLogPath -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
-} else {
-    Write-Host "test-process log file not found: $testProcessLogPath" -ForegroundColor Red
-}
-
-# Check test-process error log  
-if (Test-Path $testProcessErrorPath) {
-    Write-Host ""
-    Write-Host "test-process error log:" -ForegroundColor Yellow
-    Get-Content $testProcessErrorPath -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
-}
-
-# # Manual test to verify test-process can create files
-# Write-Host ""
-# Write-Host "Manual test-process verification:" -ForegroundColor Yellow
-# if ($testProcessPid) {
-#     Write-Host "Running a simple file-write test to verify test-process functionality..." -ForegroundColor Gray
-#     $manualTestArgs = "-count", "3", "-verbose", "-dir", $testFilesDir, "file-write"
-#     try {
-#         $manualResult = & $testProcessPath $manualTestArgs 2>&1
-#         Write-Host "Manual test result:" -ForegroundColor Gray
-#         $manualResult | ForEach-Object { Write-Host "  $_" -ForegroundColor White }
-        
-#         # Check if files were created by manual test
-#         Start-Sleep -Seconds 2
-#         $manualFiles = Get-ChildItem $testFilesDir -ErrorAction SilentlyContinue
-#         if ($manualFiles) {
-#             Write-Host "Manual test created files:" -ForegroundColor Green
-#             $manualFiles | ForEach-Object { Write-Host "  $($_.Name)" -ForegroundColor Green }
-#         } else {
-#             Write-Host "Manual test failed to create files" -ForegroundColor Red
-#         }
-#     } catch {
-#         Write-Host "Manual test failed: $($_.Exception.Message)" -ForegroundColor Red
-#     }
-# }
-
 # Check Host process logs (summary only)
 Write-Host ""
 Write-Host "Host Process Status:" -ForegroundColor Yellow
@@ -465,14 +420,31 @@ if (Test-Path $hostLogPath) {
     
     # Check for errors in the log
     $hostLogContent = Get-Content $hostLogPath -Raw
-    $errorCount = ([regex]::Matches($hostLogContent, "ERROR|Exception|Failed")).Count
-    $warningCount = ([regex]::Matches($hostLogContent, "WARN|Warning")).Count
+    $errorMatches = [regex]::Matches($hostLogContent, ".*(?:ERROR|Exception|Failed).*", [System.Text.RegularExpressions.RegexOptions]::Multiline)
+    $warningMatches = [regex]::Matches($hostLogContent, ".*(?:WARN|Warning).*", [System.Text.RegularExpressions.RegexOptions]::Multiline)
+    
+    $errorCount = $errorMatches.Count
+    $warningCount = $warningMatches.Count
     
     if ($errorCount -gt 0) {
         Write-Host "  ⚠ Found $errorCount error(s) in Host log" -ForegroundColor Yellow
+        Write-Host "    First $([math]::Min($errorCount, 20)) error(s):" -ForegroundColor Red
+        for ($i = 0; $i -lt [math]::Min($errorCount, 20); $i++) {
+            Write-Host "      $($i+1). $($errorMatches[$i].Value.Trim())" -ForegroundColor Red
+        }
+        if ($errorCount -gt 20) {
+            Write-Host "      ... and $($errorCount - 20) more error(s)" -ForegroundColor Red
+        }
     }
     if ($warningCount -gt 0) {
         Write-Host "  ⚠ Found $warningCount warning(s) in Host log" -ForegroundColor Yellow
+        Write-Host "    First $([math]::Min($warningCount, 20)) warning(s):" -ForegroundColor Yellow
+        for ($i = 0; $i -lt [math]::Min($warningCount, 20); $i++) {
+            Write-Host "      $($i+1). $($warningMatches[$i].Value.Trim())" -ForegroundColor Yellow
+        }
+        if ($warningCount -gt 20) {
+            Write-Host "      ... and $($warningCount - 20) more warning(s)" -ForegroundColor Yellow
+        }
     }
     if ($errorCount -eq 0 -and $warningCount -eq 0) {
         Write-Host "  ✓ No errors or warnings found in Host log" -ForegroundColor Green
