@@ -23,11 +23,12 @@ echo
 echo "🔨 Step 1: Building project..."
 cd "$PROJECT_ROOT"
 
-echo "Building in Release configuration..."
-dotnet build --configuration Release
+echo "Publishing in Release configuration with self-contained runtime..."
+dotnet publish src/ProcTail.Host/ProcTail.Host.csproj --configuration Release --runtime win-x64 --self-contained true --output "$PROJECT_ROOT/publish/host"
+dotnet publish src/ProcTail.Cli/ProcTail.Cli.csproj --configuration Release --runtime win-x64 --self-contained true --output "$PROJECT_ROOT/publish/cli"
 
 if [ $? -ne 0 ]; then
-    echo "❌ Build failed"
+    echo "❌ Publish failed"
     exit 1
 fi
 
@@ -48,7 +49,7 @@ echo
 echo "🧹 Step 2: ETW cleanup to prevent file locks..."
 
 # First copy cleanup script to Windows and run it
-powershell.exe -Command "
+pwsh.exe -Command "
     if (-not (Test-Path '$WINDOWS_SCRIPTS_DIR')) { 
         New-Item -ItemType Directory -Path '$WINDOWS_SCRIPTS_DIR' -Force | Out-Null 
     }
@@ -57,10 +58,10 @@ powershell.exe -Command "
 
 echo "Running ETW cleanup to stop any existing Host processes..."
 echo "This will request administrator privileges..."
-powershell.exe -Command "
+pwsh.exe -Command "
     try {
         # Run cleanup with administrator privileges
-        Start-Process PowerShell -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& $WINDOWS_SCRIPTS_DIR\\cleanup-etw.ps1 -Silent; Start-Sleep 3\"' -Verb RunAs -Wait
+        Start-Process PWSH -ArgumentList '-ExecutionPolicy RemoteSigned -Command \"& $WINDOWS_SCRIPTS_DIR\\cleanup-etw.ps1 -Silent; Start-Sleep 3\"' -Verb RunAs -Wait
         Write-Host 'ETW cleanup completed' -ForegroundColor Green
     }
     catch {
@@ -73,44 +74,60 @@ echo
 echo "📋 Step 3: Copying files to Windows environment..."
 
 # Windows側のディレクトリを作成
-powershell.exe -Command "
-    if (Test-Path '$WINDOWS_TEST_DIR') { Remove-Item -Recurse -Force '$WINDOWS_TEST_DIR' }
-    New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/host' -Force | Out-Null
-    New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/cli' -Force | Out-Null
-    New-Item -ItemType Directory -Path '$WINDOWS_TEST_DIR/tools' -Force | Out-Null
+pwsh.exe -Command "
+    \$testDirs = @('$WINDOWS_TEST_DIR/host', '$WINDOWS_SCRIPTS_DIR/cli', '$WINDOWS_TEST_DIR/tools')
+    foreach (\$dir in \$testDirs) {
+        if (Test-Path \$dir) { Remove-Item -Recurse -Force \$dir }
+        New-Item -ItemType Directory -Path \$dir -Force | Out-Null
+    }
 "
 
-# ビルド成果物をコピー
+# ビルド成果物をコピー（Windows用ファイルのみ）
 echo "Copying Host binaries..."
-powershell.exe -Command "
-    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\src\\ProcTail.Host\\bin\\Release\\net8.0\\*' -Destination '$WINDOWS_TEST_DIR/host' -Recurse -Force
+pwsh.exe -Command "
+    \$hostFiles = @('ProcTail.Host.exe', 'ProcTail.Host.dll', 'ProcTail.Host.runtimeconfig.json', 'appsettings.json', 'app.manifest', '*.dll')
+    foreach (\$pattern in \$hostFiles) {
+        \$files = Get-ChildItem -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\host' -Name \$pattern -ErrorAction SilentlyContinue
+        foreach (\$file in \$files) {
+            Copy-Item -Path \"\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\host\\\$file\" -Destination '$WINDOWS_TEST_DIR/host' -Force
+        }
+    }
 "
 
 echo "Copying CLI binaries..."
-powershell.exe -Command "
-    Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\src\\ProcTail.Cli\\bin\\Release\\net8.0\\*' -Destination '$WINDOWS_TEST_DIR/cli' -Recurse -Force
+pwsh.exe -Command "
+    \$cliFiles = @('*.dll', '*.pdb', '*.xml', '*.exe')
+    foreach (\$pattern in \$cliFiles) {
+        \$files = Get-ChildItem -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\cli' -Name \$pattern -ErrorAction SilentlyContinue
+        foreach (\$file in \$files) {
+            Copy-Item -Path \"\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\publish\\cli\\\$file\" -Destination '$WINDOWS_TEST_DIR/cli' -Force
+        }
+    }
 "
 
 echo "Copying test-process.exe..."
-powershell.exe -Command "
+pwsh.exe -Command "
     Copy-Item -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\tools\\test-process\\test-process.exe' -Destination '$WINDOWS_TEST_DIR/tools/test-process.exe' -Force
 "
 
 # PowerShellスクリプトをコピー
 echo "Copying test scripts..."
-powershell.exe -Command "
-    # BOMなしUTF-8で保存し直す
+pwsh.exe -Command "
+    # BOM付きUTF-8で保存し直す
     \$scripts = Get-ChildItem -Path '\\\\wsl.localhost\\Ubuntu\\home\\ryoha\\workspace\\proctail\\scripts\\windows-test\\*.ps1'
     foreach (\$script in \$scripts) {
-        \$content = Get-Content -Path \$script.FullName -Raw
+        \$content = Get-Content -Path \$script.FullName -Raw -Encoding UTF8
         \$outputPath = Join-Path '$WINDOWS_SCRIPTS_DIR' \$script.Name
-        [System.IO.File]::WriteAllText(\$outputPath, \$content, [System.Text.UTF8Encoding]::new(\$false))
+        
+        # BOM付きUTF-8エンコーディングで保存
+        \$utf8WithBom = New-Object System.Text.UTF8Encoding(\$true)
+        [System.IO.File]::WriteAllText(\$outputPath, \$content, \$utf8WithBom)
     }
 "
 
 # appsettings.jsonのPipeName設定を修正
 echo "Configuring appsettings.json..."
-powershell.exe -Command "
+pwsh.exe -Command "
     \$configPath = '$WINDOWS_TEST_DIR/host/appsettings.json'
     \$config = Get-Content \$configPath -Raw | ConvertFrom-Json
     \$config.NamedPipe.PipeName = 'ProcTail'
@@ -133,7 +150,7 @@ echo ""
 
 # PowerShellウィンドウを開いたままにするため、-NoExit を追加
 # 単純なコマンドラインを使用してエスケープの問題を回避
-powershell.exe -Command "Start-Process PowerShell -Verb RunAs -ArgumentList '-NoExit', '-ExecutionPolicy', 'RemoteSigned', '-File', '\"$WINDOWS_SCRIPTS_DIR\\integration-test.ps1\"'"
+pwsh.exe -Command "Start-Process PWSH -Verb RunAs -ArgumentList '-NoExit', '-ExecutionPolicy', 'RemoteSigned', '-File', '\"$WINDOWS_SCRIPTS_DIR\\integration-test.ps1\"' -Wait -WorkingDirectory '$WINDOWS_TEST_DIR'"
 
 echo ""
 echo "🎉 Automated test execution initiated!"

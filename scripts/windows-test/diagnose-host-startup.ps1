@@ -175,12 +175,13 @@ Write-Host "Attempting to start Host directly..." -ForegroundColor Gray
 if (Test-Path $hostPath) {
     try {
         # Create a log directory for Host output
-        $logDir = "C:/ProcTail-Test-Logs"
+        $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+        $logDir = "C:/Temp/ProcTailTest/logs/$timestamp"
         if (-not (Test-Path $logDir)) {
             New-Item -ItemType Directory -Path $logDir -Force | Out-Null
         }
         
-        $outputFile = "$logDir/host-startup-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+        $outputFile = "$logDir/host-diagnostic.log"
         
         Write-Host "Starting Host with output logging to: $outputFile" -ForegroundColor Gray
         Write-Host "Host will run for 10 seconds, then we'll check the output..." -ForegroundColor Gray
