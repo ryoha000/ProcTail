@@ -1,0 +1,392 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  SOLUTION_FILE: 'ProcTail.sln'
+
+jobs:
+  build-release:
+    name: Build Release Binaries
+    runs-on: windows-latest
+    
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+      
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Get Version
+      id: get-version
+      shell: powershell
+      run: |
+        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+          $version = "${{ github.event.inputs.tag_name }}" -replace '^v', ''
+        } else {
+          $version = "${{ github.ref }}" -replace 'refs/tags/v', ''
+        }
+        
+        Write-Host "Version: $version"
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+        
+    - name: Restore dependencies
+      run: dotnet restore ${{ env.SOLUTION_FILE }}
+      
+    - name: Build Release
+      run: |
+        dotnet build ${{ env.SOLUTION_FILE }} \
+          --configuration Release \
+          --no-restore \
+          -p:Version=${{ steps.get-version.outputs.version }} \
+          -p:FileVersion=${{ steps.get-version.outputs.version }} \
+          -p:AssemblyVersion=${{ steps.get-version.outputs.version }}
+          
+    - name: Run Tests
+      run: |
+        dotnet test ${{ env.SOLUTION_FILE }} \
+          --configuration Release \
+          --no-build \
+          --filter "Category!=RequiresAdmin" \
+          --logger "trx;LogFileName=release-tests.trx" \
+          --results-directory ./TestResults
+          
+    - name: Publish Host (Self-Contained win-x64)
+      run: |
+        dotnet publish src/ProcTail.Host/ProcTail.Host.csproj `
+          --configuration Release `
+          --runtime win-x64 `
+          --self-contained true `
+          --output ./publish/host-win-x64 `
+          -p:PublishSingleFile=true `
+          -p:IncludeNativeLibrariesForSelfExtract=true `
+          -p:PublishTrimmed=false `
+          -p:Version=${{ steps.get-version.outputs.version }} `
+          -p:FileVersion=${{ steps.get-version.outputs.version }} `
+          -p:AssemblyVersion=${{ steps.get-version.outputs.version }}
+          
+    - name: Publish CLI (Self-Contained win-x64)
+      run: |
+        dotnet publish src/ProcTail.Cli/ProcTail.Cli.csproj `
+          --configuration Release `
+          --runtime win-x64 `
+          --self-contained true `
+          --output ./publish/cli-win-x64 `
+          -p:PublishSingleFile=true `
+          -p:IncludeNativeLibrariesForSelfExtract=true `
+          -p:PublishTrimmed=false `
+          -p:Version=${{ steps.get-version.outputs.version }} `
+          -p:FileVersion=${{ steps.get-version.outputs.version }} `
+          -p:AssemblyVersion=${{ steps.get-version.outputs.version }}
+          
+    - name: Publish Host (Framework-dependent)
+      run: |
+        dotnet publish src/ProcTail.Host/ProcTail.Host.csproj `
+          --configuration Release `
+          --runtime win-x64 `
+          --self-contained false `
+          --output ./publish/host-framework-dependent `
+          -p:Version=${{ steps.get-version.outputs.version }} `
+          -p:FileVersion=${{ steps.get-version.outputs.version }} `
+          -p:AssemblyVersion=${{ steps.get-version.outputs.version }}
+          
+    - name: Publish CLI (Framework-dependent)
+      run: |
+        dotnet publish src/ProcTail.Cli/ProcTail.Cli.csproj `
+          --configuration Release `
+          --runtime win-x64 `
+          --self-contained false `
+          --output ./publish/cli-framework-dependent `
+          -p:Version=${{ steps.get-version.outputs.version }} `
+          -p:FileVersion=${{ steps.get-version.outputs.version }} `
+          -p:AssemblyVersion=${{ steps.get-version.outputs.version }}
+          
+    - name: Create Release Package Structure
+      shell: powershell
+      run: |
+        $version = "${{ steps.get-version.outputs.version }}"
+        
+        # ディレクトリ作成
+        New-Item -ItemType Directory -Force -Path "./release-packages"
+        
+        # Self-contained版のパッケージ作成
+        $selfContainedDir = "./release-packages/ProcTail-$version-self-contained"
+        New-Item -ItemType Directory -Force -Path $selfContainedDir
+        New-Item -ItemType Directory -Force -Path "$selfContainedDir/host"
+        New-Item -ItemType Directory -Force -Path "$selfContainedDir/cli"
+        
+        # Self-contained版ファイルコピー
+        Copy-Item -Path "./publish/host-win-x64/*" -Destination "$selfContainedDir/host/" -Recurse
+        Copy-Item -Path "./publish/cli-win-x64/*" -Destination "$selfContainedDir/cli/" -Recurse
+        
+        # Framework-dependent版のパッケージ作成
+        $frameworkDir = "./release-packages/ProcTail-$version-framework-dependent"
+        New-Item -ItemType Directory -Force -Path $frameworkDir
+        New-Item -ItemType Directory -Force -Path "$frameworkDir/host"
+        New-Item -ItemType Directory -Force -Path "$frameworkDir/cli"
+        
+        # Framework-dependent版ファイルコピー
+        Copy-Item -Path "./publish/host-framework-dependent/*" -Destination "$frameworkDir/host/" -Recurse
+        Copy-Item -Path "./publish/cli-framework-dependent/*" -Destination "$frameworkDir/cli/" -Recurse
+        
+        # READMEとライセンスをコピー
+        if (Test-Path "README.md") {
+          Copy-Item -Path "README.md" -Destination "$selfContainedDir/"
+          Copy-Item -Path "README.md" -Destination "$frameworkDir/"
+        }
+        
+        # インストール用スクリプト作成
+        $installScript = @"
+@echo off
+REM ProcTail Installation Script
+echo Installing ProcTail...
+
+REM 管理者権限チェック
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo このインストーラーは管理者権限で実行する必要があります。
+    pause
+    exit /b 1
+)
+
+REM ホストサービスをインストール
+echo Installing ProcTail Host Service...
+sc create "ProcTail" binPath= "%~dp0host\ProcTail.Host.exe" DisplayName= "ProcTail Process Monitoring Service" start= auto
+
+echo Installation completed.
+echo ホストサービスを開始するには: sc start ProcTail
+echo CLIツールは %~dp0cli\ProcTail.Cli.exe から利用できます。
+pause
+"@
+        
+        $installScript | Out-File -FilePath "$selfContainedDir/install.cmd" -Encoding ASCII
+        $installScript | Out-File -FilePath "$frameworkDir/install.cmd" -Encoding ASCII
+        
+        # アンインストール用スクリプト作成
+        $uninstallScript = @"
+@echo off
+REM ProcTail Uninstallation Script
+echo Uninstalling ProcTail...
+
+REM 管理者権限チェック
+net session >nul 2>&1
+if %errorLevel% neq 0 (
+    echo このアンインストーラーは管理者権限で実行する必要があります。
+    pause
+    exit /b 1
+)
+
+REM サービス停止・削除
+echo Stopping and removing ProcTail service...
+sc stop "ProcTail" >nul 2>&1
+sc delete "ProcTail" >nul 2>&1
+
+echo Uninstallation completed.
+pause
+"@
+        
+        $uninstallScript | Out-File -FilePath "$selfContainedDir/uninstall.cmd" -Encoding ASCII
+        $uninstallScript | Out-File -FilePath "$frameworkDir/uninstall.cmd" -Encoding ASCII
+        
+        Write-Host "Release packages created successfully"
+        
+    - name: Create ZIP Archives
+      shell: powershell
+      run: |
+        $version = "${{ steps.get-version.outputs.version }}"
+        
+        # Compress-Archive を使用してZIPファイル作成
+        Compress-Archive -Path "./release-packages/ProcTail-$version-self-contained/*" -DestinationPath "./release-packages/ProcTail-$version-self-contained-win-x64.zip"
+        Compress-Archive -Path "./release-packages/ProcTail-$version-framework-dependent/*" -DestinationPath "./release-packages/ProcTail-$version-framework-dependent-win-x64.zip"
+        
+        # チェックサム計算
+        $selfContainedHash = (Get-FileHash "./release-packages/ProcTail-$version-self-contained-win-x64.zip" -Algorithm SHA256).Hash
+        $frameworkHash = (Get-FileHash "./release-packages/ProcTail-$version-framework-dependent-win-x64.zip" -Algorithm SHA256).Hash
+        
+        # チェックサムファイル作成
+        $checksums = @"
+SHA256 Checksums for ProcTail $version
+
+ProcTail-$version-self-contained-win-x64.zip: $selfContainedHash
+ProcTail-$version-framework-dependent-win-x64.zip: $frameworkHash
+"@
+        
+        $checksums | Out-File -FilePath "./release-packages/checksums.txt" -Encoding UTF8
+        
+        Write-Host "ZIP archives created with checksums"
+        
+    - name: Upload Release Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: release-packages-${{ steps.get-version.outputs.version }}
+        path: |
+          ./release-packages/*.zip
+          ./release-packages/checksums.txt
+          
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: build-release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Download Release Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: release-packages-${{ needs.build-release.outputs.version }}
+        path: ./release-artifacts/
+        
+    - name: Generate Release Notes
+      id: release-notes
+      run: |
+        version="${{ needs.build-release.outputs.version }}"
+        
+        # 前回のタグを取得
+        previous_tag=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        
+        echo "# ProcTail $version Release" > release_notes.md
+        echo "" >> release_notes.md
+        
+        if [[ -n "$previous_tag" ]]; then
+          echo "## Changes since $previous_tag" >> release_notes.md
+          echo "" >> release_notes.md
+          
+          # コミットログから変更履歴を生成
+          git log --oneline --no-merges $previous_tag..HEAD | while read line; do
+            echo "- $line" >> release_notes.md
+          done
+        else
+          echo "## Initial Release" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "This is the initial release of ProcTail." >> release_notes.md
+        fi
+        
+        echo "" >> release_notes.md
+        echo "## Installation" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### Self-Contained Version (推奨)" >> release_notes.md
+        echo "- .NET Runtimeが不要" >> release_notes.md
+        echo "- \`ProcTail-$version-self-contained-win-x64.zip\` をダウンロード" >> release_notes.md
+        echo "- 展開後、\`install.cmd\` を管理者権限で実行" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "### Framework-Dependent Version" >> release_notes.md
+        echo "- .NET 8 Runtime が必要" >> release_notes.md
+        echo "- \`ProcTail-$version-framework-dependent-win-x64.zip\` をダウンロード" >> release_notes.md
+        echo "- 展開後、\`install.cmd\` を管理者権限で実行" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "## Usage" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "サービス開始: \`sc start ProcTail\`" >> release_notes.md
+        echo "CLIツール: \`cli/ProcTail.Cli.exe --help\`" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "## Requirements" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "- Windows 10/11 or Windows Server 2016+" >> release_notes.md
+        echo "- 管理者権限 (ETW監視のため)" >> release_notes.md
+        echo "- .NET 8 Runtime (Framework-dependent版のみ)" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "## File Checksums" >> release_notes.md
+        echo "" >> release_notes.md
+        echo "\`\`\`" >> release_notes.md
+        cat ./release-artifacts/checksums.txt >> release_notes.md
+        echo "\`\`\`" >> release_notes.md
+        
+        # ファイルサイズ情報も追加
+        echo "" >> release_notes.md
+        echo "## File Sizes" >> release_notes.md
+        echo "" >> release_notes.md
+        for file in ./release-artifacts/*.zip; do
+          if [[ -f "$file" ]]; then
+            size=$(du -h "$file" | cut -f1)
+            filename=$(basename "$file")
+            echo "- $filename: $size" >> release_notes.md
+          fi
+        done
+        
+        echo "Release notes generated successfully"
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+        name: ProcTail ${{ needs.build-release.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: ${{ github.event.inputs.prerelease || contains(needs.build-release.outputs.version, '-') }}
+        files: |
+          ./release-artifacts/*.zip
+          ./release-artifacts/checksums.txt
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Create Release Summary
+      run: |
+        version="${{ needs.build-release.outputs.version }}"
+        release_url="https://github.com/${{ github.repository }}/releases/tag/v$version"
+        
+        echo "# 🚀 Release Created Successfully!" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** $version" >> $GITHUB_STEP_SUMMARY
+        echo "**Release URL:** [$release_url]($release_url)" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📦 Release Assets" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        for file in ./release-artifacts/*.zip; do
+          if [[ -f "$file" ]]; then
+            filename=$(basename "$file")
+            size=$(du -h "$file" | cut -f1)
+            echo "- ✅ $filename ($size)" >> $GITHUB_STEP_SUMMARY
+          fi
+        done
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📋 Next Steps" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "1. リリースページでアセットとリリースノートを確認" >> $GITHUB_STEP_SUMMARY
+        echo "2. ユーザーに新バージョンの利用可能性を通知" >> $GITHUB_STEP_SUMMARY
+        echo "3. ドキュメントのバージョン情報を更新（必要に応じて）" >> $GITHUB_STEP_SUMMARY
+
+  notify-release:
+    name: Notify Release
+    runs-on: ubuntu-latest
+    needs: [build-release, create-release]
+    if: always()
+    
+    steps:
+    - name: Notify Success
+      if: ${{ needs.create-release.result == 'success' }}
+      run: |
+        echo "🎉 ProcTail ${{ needs.build-release.outputs.version }} has been successfully released!"
+        echo "Release is now available on GitHub Releases."
+        
+    - name: Notify Failure
+      if: ${{ needs.create-release.result == 'failure' || needs.build-release.result == 'failure' }}
+      run: |
+        echo "❌ Release process failed for ProcTail ${{ needs.build-release.outputs.version || 'Unknown' }}"
+        echo "Please check the workflow logs for details."
