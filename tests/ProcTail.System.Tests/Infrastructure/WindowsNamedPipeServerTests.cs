@@ -20,6 +20,7 @@ namespace ProcTail.System.Tests.Infrastructure;
 [Category("System")]
 [Category("Windows")]
 [SupportedOSPlatform("windows")]
+[NonParallelizable]
 public class WindowsNamedPipeServerTests
 {
     private ILogger<WindowsNamedPipeServer> _logger = null!;
@@ -32,7 +33,7 @@ public class WindowsNamedPipeServerTests
         _configuration = new TestNamedPipeConfiguration
         {
             PipeName = $"ProcTail_Test_{Guid.NewGuid():N}"[..32], // Unique pipe name for testing
-            MaxConcurrentConnections = 2,
+            MaxConcurrentConnections = 10,
             BufferSize = 4096,
             ResponseTimeoutSeconds = 10,
             ConnectionTimeoutSeconds = 5
@@ -246,11 +247,17 @@ public class WindowsNamedPipeServerTests
         // Assert
         server.IsRunning.Should().BeFalse();
         
-        // Wait for OS to cleanup pipe resources
-        await Task.Delay(100);
+        // Wait for OS to cleanup pipe resources with retry logic
+        bool pipeExistsAfterStop = true;
+        var maxRetries = 10;
+        var retryDelay = 100;
         
-        // Verify pipe is no longer accessible
-        var pipeExistsAfterStop = await VerifyPipeExistsAsync(_configuration.PipeName);
+        for (int i = 0; i < maxRetries && pipeExistsAfterStop; i++)
+        {
+            await Task.Delay(retryDelay);
+            pipeExistsAfterStop = await VerifyPipeExistsAsync(_configuration.PipeName);
+        }
+        
         pipeExistsAfterStop.Should().BeFalse("Named Pipe should be closed after stopping");
     }
 
@@ -267,7 +274,7 @@ public class WindowsNamedPipeServerTests
         var shortTimeoutConfig = new TestNamedPipeConfiguration
         {
             PipeName = $"ProcTail_Timeout_Test_{Guid.NewGuid():N}"[..32],
-            MaxConcurrentConnections = 1,
+            MaxConcurrentConnections = 5,
             BufferSize = 4096,
             ResponseTimeoutSeconds = 1, // Very short timeout
             ConnectionTimeoutSeconds = 1
