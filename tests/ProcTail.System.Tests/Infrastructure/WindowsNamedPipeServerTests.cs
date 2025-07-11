@@ -40,6 +40,16 @@ public class WindowsNamedPipeServerTests
         };
     }
 
+    [TearDown]
+    public async Task TearDown()
+    {
+        // テスト間でリソースクリーンアップを確実にするため少し待機
+        await Task.Delay(200);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        await Task.Delay(100);
+    }
+
     [Test]
     public void Constructor_OnWindows_ShouldInitializeSuccessfully()
     {

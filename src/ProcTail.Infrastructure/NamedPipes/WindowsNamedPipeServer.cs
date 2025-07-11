@@ -181,10 +181,17 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                     
                     lock (_lock)
                     {
-                        _clientTasks.Add(clientTask);
-                        
                         // 完了したタスクを削除
                         _clientTasks.RemoveAll(t => t.IsCompleted);
+                        
+                        // 最大接続数をチェック
+                        if (_clientTasks.Count >= _configuration.MaxConcurrentConnections)
+                        {
+                            _logger.LogWarning("最大同時接続数({MaxConnections})に達しています。新しい接続を待機します", 
+                                _configuration.MaxConcurrentConnections);
+                        }
+                        
+                        _clientTasks.Add(clientTask);
                     }
                 }
                 catch (OperationCanceledException)
@@ -218,7 +225,7 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
         return NamedPipeServerStreamAcl.Create(
             _configuration.PipeName,
             PipeDirection.InOut,
-            _configuration.MaxConcurrentConnections,
+            NamedPipeServerStream.MaxAllowedServerInstances, // -1 = 無制限
             PipeTransmissionMode.Message,
             PipeOptions.Asynchronous,
             _configuration.BufferSize,
