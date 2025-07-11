@@ -238,8 +238,6 @@ GitHub ActionsのWorkflowsタブから"Release"ワークフローを手動実行
 #### 📋 各パッケージ内容
 - `host/` - ProcTailサービス実行ファイル
 - `cli/` - CLIツール実行ファイル
-- `install.cmd` - サービスインストールスクリプト
-- `uninstall.cmd` - サービスアンインストールスクリプト
 - `README.md` - 使用方法
 
 #### 📝 自動生成される内容

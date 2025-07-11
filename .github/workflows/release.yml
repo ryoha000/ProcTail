@@ -151,64 +151,11 @@ jobs:
         Copy-Item -Path "./publish/host-framework-dependent/*" -Destination "$frameworkDir/host/" -Recurse
         Copy-Item -Path "./publish/cli-framework-dependent/*" -Destination "$frameworkDir/cli/" -Recurse
         
-        # READMEとライセンスをコピー
+        # READMEコピー
         if (Test-Path "README.md") {
           Copy-Item -Path "README.md" -Destination "$selfContainedDir/"
           Copy-Item -Path "README.md" -Destination "$frameworkDir/"
         }
-        
-        # インストール用スクリプト作成
-        $installScript = @"
-@echo off
-REM ProcTail Installation Script
-echo Installing ProcTail...
-
-REM 管理者権限チェック
-net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo このインストーラーは管理者権限で実行する必要があります。
-    pause
-    exit /b 1
-)
-
-REM ホストサービスをインストール
-echo Installing ProcTail Host Service...
-sc create "ProcTail" binPath= "%~dp0host\ProcTail.Host.exe" DisplayName= "ProcTail Process Monitoring Service" start= auto
-
-echo Installation completed.
-echo ホストサービスを開始するには: sc start ProcTail
-echo CLIツールは %~dp0cli\ProcTail.Cli.exe から利用できます。
-pause
-"@
-        
-        $installScript | Out-File -FilePath "$selfContainedDir/install.cmd" -Encoding ASCII
-        $installScript | Out-File -FilePath "$frameworkDir/install.cmd" -Encoding ASCII
-        
-        # アンインストール用スクリプト作成
-        $uninstallScript = @"
-@echo off
-REM ProcTail Uninstallation Script
-echo Uninstalling ProcTail...
-
-REM 管理者権限チェック
-net session >nul 2>&1
-if %errorLevel% neq 0 (
-    echo このアンインストーラーは管理者権限で実行する必要があります。
-    pause
-    exit /b 1
-)
-
-REM サービス停止・削除
-echo Stopping and removing ProcTail service...
-sc stop "ProcTail" >nul 2>&1
-sc delete "ProcTail" >nul 2>&1
-
-echo Uninstallation completed.
-pause
-"@
-        
-        $uninstallScript | Out-File -FilePath "$selfContainedDir/uninstall.cmd" -Encoding ASCII
-        $uninstallScript | Out-File -FilePath "$frameworkDir/uninstall.cmd" -Encoding ASCII
         
         Write-Host "Release packages created successfully"
         
@@ -293,12 +240,12 @@ ProcTail-$version-framework-dependent-win-x64.zip: $frameworkHash
         echo "### Self-Contained Version (推奨)" >> release_notes.md
         echo "- .NET Runtimeが不要" >> release_notes.md
         echo "- \`ProcTail-$version-self-contained-win-x64.zip\` をダウンロード" >> release_notes.md
-        echo "- 展開後、\`install.cmd\` を管理者権限で実行" >> release_notes.md
+        echo "- 展開後、管理者権限でサービスをインストール" >> release_notes.md
         echo "" >> release_notes.md
         echo "### Framework-Dependent Version" >> release_notes.md
         echo "- .NET 8 Runtime が必要" >> release_notes.md
         echo "- \`ProcTail-$version-framework-dependent-win-x64.zip\` をダウンロード" >> release_notes.md
-        echo "- 展開後、\`install.cmd\` を管理者権限で実行" >> release_notes.md
+        echo "- 展開後、管理者権限でサービスをインストール" >> release_notes.md
         echo "" >> release_notes.md
         echo "## Usage" >> release_notes.md
         echo "" >> release_notes.md
