@@ -293,55 +293,121 @@ $eventsLogPath = "$logDir/events.log"
 $events | Out-File -FilePath $eventsLogPath -Encoding utf8
 Write-Host "Events saved to: $eventsLogPath" -ForegroundColor Gray
 
-# Check if events were captured
-$eventString = $events.ToString()
-$hasFileWrite = $eventString.Contains("FileIO") -and $eventString.Contains("Write")
-$hasFileDelete = $eventString.Contains("FileIO") -and $eventString.Contains("Delete") 
-$hasFileCreate = $eventString.Contains("FileIO") -and $eventString.Contains("Create")
-$hasTestProcessFiles = $eventString.Contains("continuous_$testProcessPid") -or $eventString.Contains("TestFiles")
-
-Write-Host ""
-Write-Host "================= EVENT ANALYSIS =================" -ForegroundColor Cyan
-Write-Host "Events from test-process PID $testProcessPid analysis:" -ForegroundColor White
-Write-Host "• FileIO/Create events: $(if ($hasFileCreate) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileCreate) { 'Green' } else { 'Red' })
-Write-Host "• FileIO/Write events: $(if ($hasFileWrite) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileWrite) { 'Green' } else { 'Red' })
-Write-Host "• FileIO/Delete events: $(if ($hasFileDelete) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileDelete) { 'Green' } else { 'Red' })
-Write-Host "• Test-process files: $(if ($hasTestProcessFiles) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasTestProcessFiles) { 'Green' } else { 'Red' })
-
-# Count total events for this test process
-$eventLines = $eventString -split "`n"
-$testProcessEvents = $eventLines | Where-Object { $_ -match "^\s*\|\s*\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*\|\s*$testProcessPid\s*\|" }
-$testProcessEventCount = ($testProcessEvents | Measure-Object).Count
-
-Write-Host "• Total events for PID $testProcessPid`: $testProcessEventCount" -ForegroundColor White
-Write-Host "=================================================" -ForegroundColor Cyan
-
-if ($events -and ($hasFileWrite -or $hasFileDelete -or $hasFileCreate) -and $hasTestProcessFiles) {
-    Write-Host "✅ File events detected successfully!" -ForegroundColor Green
-    if ($hasFileCreate) {
-        Write-Host "✓ Create events detected" -ForegroundColor Green
+# Use analyze-logs.ps1 for event analysis
+$analyzeScriptPath = "C:/Temp/ProcTailScripts/analyze-logs.ps1"
+if (Test-Path $analyzeScriptPath) {
+    Write-Host ""
+    Write-Host "================= EVENT ANALYSIS =================" -ForegroundColor Cyan
+    Write-Host "Running event analysis using analyze-logs.ps1..." -ForegroundColor Gray
+    
+    try {
+        # Get JSON analysis result
+        $analysisResult = & $analyzeScriptPath -EventsLogFile $eventsLogPath -OutputJson | ConvertFrom-Json
+        
+        if ($analysisResult.Success) {
+            Write-Host "Events from test-process PID $testProcessPid analysis:" -ForegroundColor White
+            Write-Host "• Total event lines found: $($analysisResult.EventLines)" -ForegroundColor White
+            
+            # Check file operation events
+            $hasFileWrite = $analysisResult.Analysis.HasFileWrite
+            $hasFileCreate = $analysisResult.Analysis.HasFileCreate  
+            $hasFileDelete = $analysisResult.Analysis.HasFileDelete
+            $hasTestProcessFiles = $analysisResult.Analysis.TestProcessFiles.Count -gt 0
+            
+            Write-Host "• FileIO/Create events: $(if ($hasFileCreate) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileCreate) { 'Green' } else { 'Red' })
+            Write-Host "• FileIO/Write events: $(if ($hasFileWrite) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileWrite) { 'Green' } else { 'Red' })
+            Write-Host "• FileIO/Delete events: $(if ($hasFileDelete) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasFileDelete) { 'Green' } else { 'Red' })
+            Write-Host "• Test-process files: $(if ($hasTestProcessFiles) { '✓ Found' } else { '✗ Not found' })" -ForegroundColor $(if ($hasTestProcessFiles) { 'Green' } else { 'Red' })
+            
+            # Count events for this test process
+            $testProcessEventCount = 0
+            if ($analysisResult.ProcessEvents.PSObject.Properties[$testProcessPid]) {
+                $testProcessEventCount = $analysisResult.ProcessEvents.$testProcessPid.Count
+            }
+            
+            Write-Host "• Total events for PID $testProcessPid`: $testProcessEventCount" -ForegroundColor White
+            
+            # Display event type summary if any events found
+            if ($analysisResult.EventTypes.PSObject.Properties.Count -gt 0) {
+                Write-Host ""
+                Write-Host "Event Types Summary:" -ForegroundColor Yellow
+                foreach ($eventType in $analysisResult.EventTypes.PSObject.Properties) {
+                    Write-Host "  $($eventType.Name): $($eventType.Value.Count) events" -ForegroundColor White
+                }
+            }
+            
+            # Test success evaluation
+            if ($analysisResult.EventLines -gt 0 -and ($hasFileWrite -or $hasFileDelete -or $hasFileCreate) -and $hasTestProcessFiles) {
+                Write-Host ""
+                Write-Host "✅ File events detected successfully!" -ForegroundColor Green
+                if ($hasFileCreate) {
+                    Write-Host "✓ Create events detected" -ForegroundColor Green
+                }
+                if ($hasFileWrite) {
+                    Write-Host "✓ Write events detected" -ForegroundColor Green
+                }
+                if ($hasFileDelete) {
+                    Write-Host "✓ Delete events detected" -ForegroundColor Green
+                }
+                $testSuccess = $true
+            } else {
+                Write-Host ""
+                Write-Host "❌ Expected file events not detected" -ForegroundColor Red
+                Write-Host "This indicates a monitoring or filtering issue" -ForegroundColor Yellow
+                
+                # Additional diagnostic information
+                if ($testProcessEventCount -eq 0) {
+                    Write-Host "⚠️  No events found for test-process PID $testProcessPid" -ForegroundColor Yellow
+                    Write-Host "   This suggests the process monitoring registration failed" -ForegroundColor Gray
+                } else {
+                    Write-Host "ℹ️  Found $testProcessEventCount events for PID $testProcessPid but they don't match expected file operations" -ForegroundColor Yellow
+                }
+                
+                $testSuccess = $false
+            }
+            
+        } else {
+            Write-Host "❌ Analysis failed: $($analysisResult.Error)" -ForegroundColor Red
+            $testSuccess = $false
+        }
+        
+    } catch {
+        Write-Host "❌ Error running event analysis: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Falling back to basic analysis..." -ForegroundColor Yellow
+        
+        # Fallback to original analysis
+        $eventString = $events.ToString()
+        $hasFileWrite = $eventString.Contains("FileIO") -and $eventString.Contains("Write")
+        $hasFileDelete = $eventString.Contains("FileIO") -and $eventString.Contains("Delete") 
+        $hasFileCreate = $eventString.Contains("FileIO") -and $eventString.Contains("Create")
+        $hasTestProcessFiles = $eventString.Contains("continuous_$testProcessPid") -or $eventString.Contains("TestFiles")
+        
+        if ($events -and ($hasFileWrite -or $hasFileDelete -or $hasFileCreate) -and $hasTestProcessFiles) {
+            $testSuccess = $true
+        } else {
+            $testSuccess = $false
+        }
     }
-    if ($hasFileWrite) {
-        Write-Host "✓ Write events detected" -ForegroundColor Green
-    }
-    if ($hasFileDelete) {
-        Write-Host "✓ Delete events detected" -ForegroundColor Green
-    }
-    $testSuccess = $true
+    
 } else {
-    Write-Host "❌ Expected file events not detected" -ForegroundColor Red
-    Write-Host "This indicates a monitoring or filtering issue" -ForegroundColor Yellow
+    Write-Host "❌ analyze-logs.ps1 not found at: $analyzeScriptPath" -ForegroundColor Red
+    Write-Host "Falling back to basic analysis..." -ForegroundColor Yellow
     
-    # Additional diagnostic information
-    if ($testProcessEventCount -eq 0) {
-        Write-Host "⚠️  No events found for test-process PID $testProcessPid" -ForegroundColor Yellow
-        Write-Host "   This suggests the process monitoring registration failed" -ForegroundColor Gray
+    # Fallback to original analysis
+    $eventString = $events.ToString()
+    $hasFileWrite = $eventString.Contains("FileIO") -and $eventString.Contains("Write")
+    $hasFileDelete = $eventString.Contains("FileIO") -and $eventString.Contains("Delete") 
+    $hasFileCreate = $eventString.Contains("FileIO") -and $eventString.Contains("Create")
+    $hasTestProcessFiles = $eventString.Contains("continuous_$testProcessPid") -or $eventString.Contains("TestFiles")
+    
+    if ($events -and ($hasFileWrite -or $hasFileDelete -or $hasFileCreate) -and $hasTestProcessFiles) {
+        $testSuccess = $true
     } else {
-        Write-Host "ℹ️  Found $testProcessEventCount events for PID $testProcessPid but they don't match expected file operations" -ForegroundColor Yellow
+        $testSuccess = $false
     }
-    
-    $testSuccess = $false
 }
+
+Write-Host "=================================================" -ForegroundColor Cyan
 
 # Display log files for debugging
 Write-Host ""
@@ -361,20 +427,6 @@ if (Test-Path $testProcessErrorPath) {
     Write-Host ""
     Write-Host "test-process error log:" -ForegroundColor Yellow
     Get-Content $testProcessErrorPath -Encoding "utf8" | ForEach-Object { Write-Host $_ -ForegroundColor White }
-}
-
-# Check if test files were actually created
-Write-Host ""
-Write-Host "Files created in test directory:" -ForegroundColor Yellow
-if (Test-Path $testFilesDir) {
-    $testFiles = Get-ChildItem $testFilesDir -ErrorAction SilentlyContinue
-    if ($testFiles) {
-        $testFiles | ForEach-Object { Write-Host "  $($_.Name) ($(Get-Date $_.LastWriteTime))" -ForegroundColor White }
-    } else {
-        Write-Host "  No files found in test directory" -ForegroundColor Red
-    }
-} else {
-    Write-Host "  Test directory does not exist: $testFilesDir" -ForegroundColor Red
 }
 
 # # Manual test to verify test-process can create files
@@ -480,17 +532,6 @@ if ($testSuccess) {
     Write-Host "TEST COMPLETED WITH ISSUES" -ForegroundColor Red
 }
 Write-Host "===============================================" -ForegroundColor Yellow
-
-# Run log analysis automatically
-Write-Host ""
-Write-Host "Running detailed log analysis..." -ForegroundColor Cyan
-$analyzeScriptPath = "C:/Temp/ProcTailScripts/analyze-logs.ps1"
-if (Test-Path $analyzeScriptPath) {
-    Write-Host ""
-    & $analyzeScriptPath -LogDirectory $logDir
-} else {
-    Write-Host "Log analysis script not found at: $analyzeScriptPath" -ForegroundColor Yellow
-}
 
 Write-Host ""
 Write-Host "Test files are located at: $testRoot" -ForegroundColor Gray
