@@ -124,12 +124,10 @@ jobs:
           -p:AssemblyVersion=${{ steps.get-version.outputs.version }}
           
     - name: Create Release Package Structure
-      shell: powershell
-      run: .github/scripts/create-release-packages.ps1 -Version "${{ steps.get-version.outputs.version }}"
+      run: pwsh.exe -ExecutionPolicy Bypass -File .github/scripts/create-release-packages.ps1 -Version "${{ steps.get-version.outputs.version }}"
         
     - name: Create ZIP Archives
-      shell: powershell
-      run: .github/scripts/create-zip-archives.ps1 -Version "${{ steps.get-version.outputs.version }}"
+      run: pwsh.exe -ExecutionPolicy Bypass -File .github/scripts/create-zip-archives.ps1 -Version "${{ steps.get-version.outputs.version }}"
         
     - name: Upload Release Artifacts
       uses: actions/upload-artifact@v4
