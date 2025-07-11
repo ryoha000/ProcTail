@@ -47,6 +47,13 @@ jobs:
         Write-Host "Version: $version"
         echo "version=$version" >> $env:GITHUB_OUTPUT
         
+    - name: Check Administrator Privileges
+      shell: powershell
+      run: |
+        $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")
+        Write-Host "Running with Administrator privileges: $isAdmin"
+        echo "ADMIN_PRIVILEGES=$isAdmin" >> $env:GITHUB_ENV
+        
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
