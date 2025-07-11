@@ -293,11 +293,6 @@ $eventsLogPath = "$logDir/events.log"
 $events | Out-File -FilePath $eventsLogPath -Encoding utf8
 Write-Host "Events saved to: $eventsLogPath" -ForegroundColor Gray
 
-Write-Host ""
-Write-Host "================= EVENTS =================" -ForegroundColor Yellow
-Write-Host $events -ForegroundColor White
-Write-Host "==========================================" -ForegroundColor Yellow
-
 # Check if events were captured
 $eventString = $events.ToString()
 $hasFileWrite = $eventString.Contains("FileIO") -and $eventString.Contains("Write")
