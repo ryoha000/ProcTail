@@ -282,6 +282,9 @@ public class EventProcessorTests
         processEvent.ProviderName.Should().Be("Microsoft-Windows-Kernel-Process");
         processEvent.EventName.Should().Be("Process/Start");
 
+        // 子プロセス追加は非同期で実行されるため、少し待つ
+        await Task.Delay(50);
+
         // 子プロセス追加が呼ばれることを確認
         _mockWatchTargetManager.Verify(x => x.AddChildProcessAsync(5678, 1234), Times.Once);
     }

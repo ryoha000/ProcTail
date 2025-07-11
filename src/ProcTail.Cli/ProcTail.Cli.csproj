@@ -8,6 +8,7 @@
     <AssemblyName>proctail</AssemblyName>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>false</SelfContained>
+    <NoWarn>$(NoWarn);CA1416;CS1998;IL3000</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

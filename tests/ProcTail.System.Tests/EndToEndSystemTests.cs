@@ -294,9 +294,9 @@ public class EndToEndSystemTests
     [Test]
     public async Task IpcCommunication_RealNamedPipes_ShouldWork()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows) || !IsRunningAsAdministrator())
         {
-            Assert.Ignore("このテストはWindows環境でのみ実行されます");
+            Assert.Ignore("このテストはWindows環境で管理者権限が必要です");
             return;
         }
 

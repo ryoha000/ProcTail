@@ -246,6 +246,9 @@ public class WindowsNamedPipeServerTests
         // Assert
         server.IsRunning.Should().BeFalse();
         
+        // Wait for OS to cleanup pipe resources
+        await Task.Delay(100);
+        
         // Verify pipe is no longer accessible
         var pipeExistsAfterStop = await VerifyPipeExistsAsync(_configuration.PipeName);
         pipeExistsAfterStop.Should().BeFalse("Named Pipe should be closed after stopping");
@@ -364,7 +367,7 @@ public class WindowsNamedPipeServerTests
         try
         {
             using var testClient = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut);
-            await testClient.ConnectAsync(1000); // Short timeout for verification
+            await testClient.ConnectAsync(500); // Short timeout for verification
             return testClient.IsConnected;
         }
         catch
