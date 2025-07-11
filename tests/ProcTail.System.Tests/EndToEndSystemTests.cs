@@ -50,7 +50,7 @@ public class EndToEndSystemTests
         services.AddLogging(builder => 
         {
             builder.AddConsole();
-            builder.SetMinimumLevel(LogLevel.Information);
+            builder.SetMinimumLevel(LogLevel.None);
         });
 
         // Real Windows implementations

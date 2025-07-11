@@ -28,7 +28,7 @@ public static class MockServiceFactory
         services.AddLogging(builder =>
         {
             builder.AddConsole();
-            builder.SetMinimumLevel(LogLevel.Debug);
+            builder.SetMinimumLevel(LogLevel.None);
         });
 
         // ETW設定
