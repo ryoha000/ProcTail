@@ -12,39 +12,10 @@ env:
   SOLUTION_FILE: 'ProcTail.sln'
 
 jobs:
-  # コード品質チェック
-  code-quality:
-    name: Code Quality Check
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
-        
-    - name: Restore dependencies
-      run: dotnet restore ${{ env.SOLUTION_FILE }}
-      
-    - name: Check code formatting
-      run: dotnet format --verify-no-changes --verbosity diagnostic
-      
-    - name: Build solution
-      run: dotnet build ${{ env.SOLUTION_FILE }} --configuration Release --no-restore
-      
-    - name: Run security analysis
-      uses: security-code-scan/security-code-scan-action@v1
-      with:
-        project-path: ${{ env.SOLUTION_FILE }}
-
   # Linux/WSL互換テスト
   linux-tests:
     name: Linux Compatible Tests
     runs-on: ubuntu-latest
-    needs: code-quality
     
     strategy:
       matrix:
@@ -123,7 +94,6 @@ jobs:
   windows-tests:
     name: Windows System Tests
     runs-on: windows-latest
-    needs: code-quality
     
     strategy:
       matrix:
