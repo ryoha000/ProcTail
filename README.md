@@ -202,3 +202,82 @@ dotnet run --project src/ProcTail.Cli/ -- add --name "notepad.exe" --tag "debug"
 # 全テスト実行
 dotnet test
 ```
+
+## 🚀 リリース手順
+
+### 自動リリース（推奨）
+
+タグを作成してプッシュするだけで、GitHub Actionsが自動的にリリースを作成します：
+
+```bash
+# 新しいバージョンのタグを作成
+git tag v1.0.0
+
+# タグをリモートにプッシュ（自動リリース開始）
+git push origin v1.0.0
+```
+
+### 手動リリース
+
+GitHub ActionsのWorkflowsタブから"Release"ワークフローを手動実行することも可能です：
+
+1. GitHubリポジトリの **Actions** タブを開く
+2. **Release** ワークフローを選択
+3. **Run workflow** をクリック
+4. タグ名（例: v1.0.1）を入力して実行
+
+### リリース内容
+
+自動リリースには以下が含まれます：
+
+#### 📦 リリースアセット
+- **ProcTail-{version}-self-contained-win-x64.zip** - .NET Runtime不要版（推奨）
+- **ProcTail-{version}-framework-dependent-win-x64.zip** - .NET 8 Runtime必要版
+- **checksums.txt** - SHA256チェックサム
+
+#### 📋 各パッケージ内容
+- `host/` - ProcTailサービス実行ファイル
+- `cli/` - CLIツール実行ファイル
+- `install.cmd` - サービスインストールスクリプト
+- `uninstall.cmd` - サービスアンインストールスクリプト
+- `README.md` - 使用方法
+
+#### 📝 自動生成される内容
+- 前回リリースからの変更履歴
+- インストール手順
+- システム要件
+- ファイルサイズとチェックサム情報
+
+### バージョニング規則
+
+セマンティックバージョニング（SemVer）に従ってください：
+
+- **MAJOR** (v2.0.0): 破壊的変更
+- **MINOR** (v1.1.0): 新機能追加（後方互換）
+- **PATCH** (v1.0.1): バグ修正
+
+```bash
+# パッチリリース例
+git tag v1.0.1
+git push origin v1.0.1
+
+# マイナーリリース例  
+git tag v1.1.0
+git push origin v1.1.0
+
+# メジャーリリース例
+git tag v2.0.0
+git push origin v2.0.0
+```
+
+### プレリリース
+
+アルファ・ベータ版には `-alpha` や `-beta` サフィックスを付けてください：
+
+```bash
+# プレリリース例
+git tag v1.1.0-beta.1
+git push origin v1.1.0-beta.1
+```
+
+プレリリースは自動的に「Pre-release」としてマークされます。
