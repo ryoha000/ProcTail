@@ -184,11 +184,22 @@ public class EventProcessor : IEventProcessor
         {
             // ファイルパスの抽出
             var filePath = ExtractFilePathFromPayload(rawEvent.Payload);
+            
+            // FileIO/Closeなどの一部のイベントではファイルパスが取得できない場合があるが、
+            // これは正常な動作なので処理を継続する
             if (string.IsNullOrEmpty(filePath))
             {
-                _logger.LogWarning("ファイルパスが見つかりません (Event: {Event}, ProcessId: {ProcessId})",
-                    rawEvent.EventName, rawEvent.ProcessId);
-                return null;
+                if (rawEvent.EventName == "FileIO/Close")
+                {
+                    _logger.LogTrace("FileIO/Closeイベントでファイルパスが未取得 (ProcessId: {ProcessId}) - 正常動作", rawEvent.ProcessId);
+                    filePath = "Unknown"; // デフォルト値を設定
+                }
+                else
+                {
+                    _logger.LogWarning("ファイルパスが見つかりません (Event: {Event}, ProcessId: {ProcessId})",
+                        rawEvent.EventName, rawEvent.ProcessId);
+                    filePath = "Unknown"; // 処理を継続するためデフォルト値を設定
+                }
             }
 
             return new FileEventData
