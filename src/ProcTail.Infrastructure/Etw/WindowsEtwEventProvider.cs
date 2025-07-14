@@ -636,9 +636,6 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             var processId = data.ProcessID;
             var payload = new Dictionary<string, object>();
             
-            _logger.LogDebug("RAW FileIOイベント受信: EventName={EventName}, ProcessId={ProcessId}, Provider={Provider}, OpcodeName={OpcodeName}", 
-                eventName, processId, data.ProviderName, data.OpcodeName);
-            
             // TraceEventからペイロード情報を取得
             for (int i = 0; i < data.PayloadNames.Length; i++)
             {
