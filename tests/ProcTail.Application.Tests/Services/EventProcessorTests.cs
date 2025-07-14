@@ -89,7 +89,7 @@ public class EventProcessorTests
     }
 
     [Test]
-    public void ShouldProcessEvent_WithDisabledProvider_ShouldReturnFalse()
+    public void ShouldProcessEvent_WithDisabledProvider_ShouldReturnTrue()
     {
         // Arrange
         var rawEvent = TestEventFactory.CreateRawEvent(
@@ -101,12 +101,12 @@ public class EventProcessorTests
         // Act
         var result = _processor.ShouldProcessEvent(rawEvent);
 
-        // Assert
-        result.Should().BeFalse();
+        // Assert - フィルタリング無効化により、すべてのプロバイダーを通す
+        result.Should().BeTrue();
     }
 
     [Test]
-    public void ShouldProcessEvent_WithDisabledEventName_ShouldReturnFalse()
+    public void ShouldProcessEvent_WithDisabledEventName_ShouldReturnTrue()
     {
         // Arrange
         var rawEvent = TestEventFactory.CreateRawEvent(
@@ -118,8 +118,8 @@ public class EventProcessorTests
         // Act
         var result = _processor.ShouldProcessEvent(rawEvent);
 
-        // Assert
-        result.Should().BeFalse();
+        // Assert - フィルタリング無効化により、すべてのイベント名を通す
+        result.Should().BeTrue();
     }
 
     [Test]
@@ -154,13 +154,16 @@ public class EventProcessorTests
             1234
         );
 
+        // フィルタリング無効化により、プロセスが監視されていないため失敗することを確認
+        _mockWatchTargetManager.Setup(x => x.IsWatchedProcess(1234)).Returns(false);
+
         // Act
         var result = await _processor.ProcessEventAsync(rawEvent);
 
         // Assert
         result.Should().NotBeNull();
         result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("filtered");
+        result.ErrorMessage.Should().Contain("not watched");
     }
 
     [Test]

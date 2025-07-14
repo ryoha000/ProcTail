@@ -746,12 +746,8 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _logger.LogTrace("未処理イベントを受信: {ProviderName}.{EventName}, ProcessId: {ProcessId}", 
                 data.ProviderName, data.EventName, data.ProcessID);
 
-            // 設定で有効になっているイベントのみ処理（設定が空の場合はすべて通す）
-            if (_configuration.EnabledEventNames.Count > 0 && !_configuration.EnabledEventNames.Contains(data.EventName))
-            {
-                _logger.LogTrace("イベントはフィルタリングされました: {EventName} (有効なイベント一覧にない)", data.EventName);
-                return;
-            }
+            // フィルタリングを無効化：すべてのイベントを処理
+            // 設定に関係なく全てのイベントを通す
 
             var payload = new Dictionary<string, object>();
             

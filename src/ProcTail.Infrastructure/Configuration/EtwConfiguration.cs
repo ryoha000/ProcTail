@@ -77,23 +77,14 @@ public class EtwConfiguration : IEtwConfiguration
             "Process/End"
         };
         
+        // フィルタリングを完全に無効化
         FilteringOptions = new EtwFilteringOptions
         {
-            ExcludeSystemProcesses = true,
-            MinimumProcessId = 4,
-            ExcludedProcessNames = new[]
-            {
-                "System", "Registry", "smss.exe", "csrss.exe", "wininit.exe"
-            }.AsReadOnly(),
-            IncludeFileExtensions = new[]
-            {
-                ".txt", ".log", ".exe", ".dll"
-            }.AsReadOnly(),
-            ExcludeFilePatterns = new[]
-            {
-                "C:\\Windows\\System32\\*",
-                "*\\Temp\\*"
-            }.AsReadOnly()
+            ExcludeSystemProcesses = false,
+            MinimumProcessId = 0,
+            ExcludedProcessNames = Array.Empty<string>().AsReadOnly(),
+            IncludeFileExtensions = Array.Empty<string>().AsReadOnly(),
+            ExcludeFilePatterns = Array.Empty<string>().AsReadOnly()
         };
         
         PerformanceOptions = new EtwPerformanceOptions
@@ -128,50 +119,33 @@ public class EtwConfiguration : IEtwConfiguration
     }
 
     /// <summary>
-    /// 設定を読み込み
+    /// 設定を読み込み（ハードコード化された固定設定を使用）
     /// </summary>
     private void LoadConfiguration()
     {
         try
         {
+            // 設定ファイルに関係なく、常に全てのイベントを監視
+            EnabledProviders = GetDefaultProviders().AsReadOnly();
+            EnabledEventNames = GetDefaultEventNames().AsReadOnly();
+
+            // バッファ設定のみ設定ファイルから読み込み（パフォーマンス調整用）
             var etwSection = _configuration.GetSection("ETW");
-            
-            // 設定ファイルが存在するかチェック
-            if (!etwSection.Exists())
-            {
-                _logger.LogWarning("ETW設定セクションが見つかりません。デフォルト設定を使用します。");
-                LoadDefaultConfiguration();
-                return;
-            }
-
-            // プロバイダー設定
-            var providers = etwSection.GetSection("EnabledProviders").Get<string[]>() ?? GetDefaultProviders();
-            EnabledProviders = providers.AsReadOnly();
-
-            // イベント名設定
-            var eventNames = etwSection.GetSection("EnabledEventNames").Get<string[]>() ?? GetDefaultEventNames();
-            EnabledEventNames = eventNames.AsReadOnly();
-
-            // バッファ設定
             BufferSizeMB = etwSection.GetValue<int>("BufferSizeMB", 64);
             BufferCount = etwSection.GetValue<int>("BufferCount", 20);
             EventBufferTimeout = TimeSpan.FromMilliseconds(etwSection.GetValue<int>("EventBufferTimeoutMs", 1000));
 
-            // フィルタリング設定
-            var filteringSection = etwSection.GetSection("Filtering");
+            // フィルタリングを完全に無効化
             FilteringOptions = new EtwFilteringOptions
             {
-                ExcludeSystemProcesses = filteringSection.GetValue<bool>("ExcludeSystemProcesses", true),
-                MinimumProcessId = filteringSection.GetValue<int>("MinimumProcessId", 4),
-                ExcludedProcessNames = (filteringSection.GetSection("ExcludedProcessNames").Get<string[]>() ?? 
-                    GetDefaultExcludedProcessNames()).AsReadOnly(),
-                IncludeFileExtensions = (filteringSection.GetSection("IncludeFileExtensions").Get<string[]>() ?? 
-                    GetDefaultIncludeFileExtensions()).AsReadOnly(),
-                ExcludeFilePatterns = (filteringSection.GetSection("ExcludeFilePatterns").Get<string[]>() ?? 
-                    GetDefaultExcludeFilePatterns()).AsReadOnly()
+                ExcludeSystemProcesses = false,
+                MinimumProcessId = 0,
+                ExcludedProcessNames = Array.Empty<string>().AsReadOnly(),
+                IncludeFileExtensions = Array.Empty<string>().AsReadOnly(),
+                ExcludeFilePatterns = Array.Empty<string>().AsReadOnly()
             };
 
-            // パフォーマンス設定
+            // パフォーマンス設定は設定ファイルから読み込み
             var performanceSection = etwSection.GetSection("Performance");
             PerformanceOptions = new EtwPerformanceOptions
             {
@@ -182,18 +156,18 @@ public class EtwConfiguration : IEtwConfiguration
                 MaxEventsPerSecond = performanceSection.GetValue<int>("MaxEventsPerSecond", 1000)
             };
 
-            _logger.LogInformation("ETW設定を読み込みました - プロバイダー: {ProviderCount}, イベント: {EventCount}", 
+            _logger.LogInformation("ETW設定をハードコード化された値で初期化しました - プロバイダー: {ProviderCount}, イベント: {EventCount}, フィルタリング: 無効", 
                 EnabledProviders.Count, EnabledEventNames.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "ETW設定読み込み中にエラーが発生しました。デフォルト設定を使用します。");
+            _logger.LogError(ex, "ETW設定読み込み中にエラーが発生しました。固定設定を使用します。");
             LoadDefaultConfiguration();
         }
     }
 
     /// <summary>
-    /// デフォルト設定を読み込み
+    /// デフォルト設定を読み込み（フィルタリング無効化）
     /// </summary>
     private void LoadDefaultConfiguration()
     {
@@ -203,13 +177,14 @@ public class EtwConfiguration : IEtwConfiguration
         BufferCount = 20;
         EventBufferTimeout = TimeSpan.FromMilliseconds(1000);
         
+        // フィルタリングを完全に無効化
         FilteringOptions = new EtwFilteringOptions
         {
-            ExcludeSystemProcesses = true,
-            MinimumProcessId = 4,
-            ExcludedProcessNames = GetDefaultExcludedProcessNames().AsReadOnly(),
-            IncludeFileExtensions = GetDefaultIncludeFileExtensions().AsReadOnly(),
-            ExcludeFilePatterns = GetDefaultExcludeFilePatterns().AsReadOnly()
+            ExcludeSystemProcesses = false,
+            MinimumProcessId = 0,
+            ExcludedProcessNames = Array.Empty<string>().AsReadOnly(),
+            IncludeFileExtensions = Array.Empty<string>().AsReadOnly(),
+            ExcludeFilePatterns = Array.Empty<string>().AsReadOnly()
         };
 
         PerformanceOptions = new EtwPerformanceOptions
@@ -221,7 +196,7 @@ public class EtwConfiguration : IEtwConfiguration
             MaxEventsPerSecond = 1000
         };
 
-        _logger?.LogInformation("デフォルトETW設定を使用します - プロバイダー: {ProviderCount}, イベント: {EventCount}, ファイル監視: 有効", 
+        _logger?.LogInformation("デフォルトETW設定を使用します - プロバイダー: {ProviderCount}, イベント: {EventCount}, フィルタリング: 無効", 
             EnabledProviders.Count, EnabledEventNames.Count);
     }
 

@@ -102,7 +102,7 @@ public class EventProcessor : IEventProcessor
     }
 
     /// <summary>
-    /// イベントタイプのフィルタリング
+    /// イベントタイプのフィルタリング（フィルタリング無効化）
     /// </summary>
     /// <param name="rawEvent">生ETWイベント</param>
     /// <returns>処理すべき場合true</returns>
@@ -113,18 +113,7 @@ public class EventProcessor : IEventProcessor
             return false;
         }
 
-        // プロバイダーのフィルタリング
-        if (!_enabledProviders.Contains(rawEvent.ProviderName))
-        {
-            return false;
-        }
-
-        // イベント名のフィルタリング
-        if (!_enabledEventNames.Contains(rawEvent.EventName))
-        {
-            return false;
-        }
-
+        // フィルタリングを無効化：すべてのイベントを処理
         return true;
     }
 
