@@ -237,11 +237,6 @@ public class ProcTailService : IProcTailService, IDisposable
                     processingResult.EventData.ProcessId, 
                     processingResult.EventData.TagName);
             }
-            else
-            {
-                _logger.LogDebug("イベントはフィルタリングまたは処理失敗しました (Provider: {Provider}, Event: {Event}, ProcessId: {ProcessId}, Error: {Error})",
-                    rawEvent.ProviderName, rawEvent.EventName, rawEvent.ProcessId, processingResult.ErrorMessage);
-            }
         }
         catch (Exception ex)
         {

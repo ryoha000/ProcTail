@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using ProcTail.Core.Interfaces;
 using ProcTail.Core.Models;
@@ -13,6 +14,7 @@ public class EventProcessor : IEventProcessor
     private readonly IWatchTargetManager _watchTargetManager;
     private readonly IReadOnlyList<string> _enabledProviders;
     private readonly IReadOnlyList<string> _enabledEventNames;
+    private readonly ConcurrentDictionary<string, byte> _firstTimeEvents;
 
     /// <summary>
     /// コンストラクタ
@@ -31,6 +33,7 @@ public class EventProcessor : IEventProcessor
         var config = etwConfiguration ?? throw new ArgumentNullException(nameof(etwConfiguration));
         _enabledProviders = config.EnabledProviders;
         _enabledEventNames = config.EnabledEventNames;
+        _firstTimeEvents = new ConcurrentDictionary<string, byte>();
     }
 
     /// <summary>
@@ -53,15 +56,12 @@ public class EventProcessor : IEventProcessor
             // イベントをフィルタリング
             if (!ShouldProcessEvent(rawEvent))
             {
-                _logger.LogDebug("イベントはフィルタリングされました (Provider: {Provider}, Event: {Event}, ProcessId: {ProcessId})",
-                    rawEvent.ProviderName, rawEvent.EventName, rawEvent.ProcessId);
                 return new ProcessingResult(false, ErrorMessage: "Event filtered out");
             }
 
             // 監視対象プロセスかチェック
             if (!_watchTargetManager.IsWatchedProcess(rawEvent.ProcessId))
             {
-                _logger.LogDebug("監視対象外のプロセスです (ProcessId: {ProcessId})", rawEvent.ProcessId);
                 return new ProcessingResult(false, ErrorMessage: "Process not watched");
             }
 
@@ -71,6 +71,14 @@ public class EventProcessor : IEventProcessor
             {
                 _logger.LogWarning("監視対象プロセスのタグが見つかりません (ProcessId: {ProcessId})", rawEvent.ProcessId);
                 return new ProcessingResult(false, ErrorMessage: "Tag not found for watched process");
+            }
+
+            // 初回イベントキャッチの記録・ログ出力
+            var eventKey = $"{rawEvent.ProcessId}:{rawEvent.ProviderName}:{rawEvent.EventName}";
+            if (_firstTimeEvents.TryAdd(eventKey, 0))
+            {
+                _logger.LogInformation("初回イベントキャッチ (Provider: {Provider}, Event: {Event}, ProcessId: {ProcessId}, Tag: {Tag})",
+                    rawEvent.ProviderName, rawEvent.EventName, rawEvent.ProcessId, tagName);
             }
 
             // ドメインイベントに変換
