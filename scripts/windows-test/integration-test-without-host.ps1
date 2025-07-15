@@ -55,40 +55,6 @@ Write-Host "Required files found" -ForegroundColor Green
 $testSuccess = $false
 $testProcess = $null
 
-# Step 1: Verify ETW Session Cleanup
-Write-Host ""
-Write-Host "Step 1: Verifying ETW Session Cleanup..." -ForegroundColor Cyan
-
-# ETW cleanup should have been performed by run-windows-test.sh before file copy
-Write-Host "ETW cleanup was performed before file operations to prevent locks" -ForegroundColor Gray
-
-# Quick verification and additional cleanup if needed
-$cleanupScriptPath = "C:/Temp/ProcTailScripts/cleanup-etw.ps1"
-$remainingProcesses = Get-Process -Name "ProcTail.Host" -ErrorAction SilentlyContinue
-if ($remainingProcesses) {
-    Write-Host "Found remaining Host processes, performing additional cleanup..." -ForegroundColor Yellow
-    if (Test-Path $cleanupScriptPath) {
-        try {
-            & $cleanupScriptPath -Silent | Out-Null
-            Write-Host "Additional cleanup completed" -ForegroundColor Green
-        }
-        catch {
-            # Manual fallback
-            $remainingProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-            Write-Host "Manual process cleanup completed" -ForegroundColor Green
-        }
-    } else {
-        $remainingProcesses | Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        Write-Host "Manual process cleanup completed" -ForegroundColor Green
-    }
-} else {
-    Write-Host "No remaining Host processes found" -ForegroundColor Green
-}
-
-Write-Host "ETW cleanup verification completed" -ForegroundColor Green
-
 # Step 3: Start test-process and monitoring
 Write-Host ""
 Write-Host "Step 3: Starting test-process and monitoring..." -ForegroundColor Cyan
@@ -324,40 +290,6 @@ if (Test-Path $analyzeScriptPath) {
     } else {
         $testSuccess = $false
     }
-}
-
-# Cleanup
-Write-Host ""
-Write-Host "Cleanup..." -ForegroundColor Cyan
-
-if (-not $KeepProcesses) {
-    # Close test-process
-    if ($testProcess -and -not $testProcess.HasExited) {
-        $testProcess | Stop-Process -Force -ErrorAction SilentlyContinue
-        Write-Host "test-process closed" -ForegroundColor Gray
-    }
-    
-    # Clean ETW sessions again using dedicated script
-    if (Test-Path $cleanupScriptPath) {
-        Write-Host "Running final ETW cleanup..." -ForegroundColor Gray
-        try {
-            & $cleanupScriptPath -Silent | Out-Null
-        }
-        catch {
-            # Fallback to manual cleanup if script fails
-            $fallbackSessions = @("ProcTail", "ProcTail-Dev", "NT Kernel Logger")
-            foreach ($session in $fallbackSessions) {
-                try {
-                    logman stop $session -ets 2>$null | Out-Null
-                }
-                catch {
-                    # Ignore
-                }
-            }
-        }
-    }
-} else {
-    Write-Host "Processes kept running (--KeepProcesses flag)" -ForegroundColor Yellow
 }
 
 # Results
