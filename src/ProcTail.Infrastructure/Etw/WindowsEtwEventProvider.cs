@@ -265,9 +265,10 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
             _logger.LogTrace("最軽量ファイル監視を有効化中...");
             session.EnableKernelProvider(
                 KernelTraceEventParser.Keywords.FileIOInit | 
-                KernelTraceEventParser.Keywords.Process);  // FileIOInitとProcessでReadを除外
+                KernelTraceEventParser.Keywords.FileIO |
+                KernelTraceEventParser.Keywords.Process);  // FileIOInitとFileIOとProcessでファイル操作イベントを監視
             
-            _logger.LogInformation("カーネルプロバイダーを有効にしました (FileIOInit + Process)");
+            _logger.LogInformation("カーネルプロバイダーを有効にしました (FileIOInit + FileIO + Process)");
             
             // イベントハンドラーを設定
             SetupKernelEventHandlers(session);
