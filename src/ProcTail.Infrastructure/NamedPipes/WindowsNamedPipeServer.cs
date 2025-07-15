@@ -24,6 +24,7 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
     private bool _isRunning;
     private bool _disposed;
     private Task? _serverTask;
+    private int _serverInstanceCount = 0;
 
     /// <summary>
     /// IPC要求受信イベント
@@ -157,12 +158,28 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                 try
                 {
                     // Named Pipeサーバーを作成
-                    var pipeServer = CreateNamedPipeServerStream();
-                    
-                    _logger.LogDebug("クライアント接続を待機中...");
+                    NamedPipeServerStream? pipeServer = null;
+                    try
+                    {
+                        pipeServer = CreateNamedPipeServerStream();
+                        
+                        _logger.LogDebug("クライアント接続を待機中...");
 
-                    // クライアント接続を待機
-                    await pipeServer.WaitForConnectionAsync(_cancellationTokenSource.Token);
+                        // クライアント接続を待機
+                        await pipeServer.WaitForConnectionAsync(_cancellationTokenSource.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        pipeServer?.Dispose();
+                        throw;
+                    }
+                    catch (Exception ex)
+                    {
+                        pipeServer?.Dispose();
+                        // インスタンスカウントをデクリメント
+                        Interlocked.Decrement(ref _serverInstanceCount);
+                        throw;
+                    }
                     
                     _logger.LogDebug("クライアントが接続されました");
 
@@ -173,9 +190,24 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                         {
                             await HandleClientAsync(pipeServer);
                         }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "クライアント処理中に予期しないエラーが発生しました");
+                        }
                         finally
                         {
+                            try
+                            {
+                                if (pipeServer.IsConnected)
+                                {
+                                    pipeServer.Disconnect();
+                                }
+                            }
+                            catch { }
+                            
                             pipeServer?.Dispose();
+                            // インスタンスカウントをデクリメント
+                            Interlocked.Decrement(ref _serverInstanceCount);
                         }
                     }, _cancellationTokenSource.Token);
                     
@@ -187,8 +219,25 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                         // 最大接続数をチェック
                         if (_clientTasks.Count >= _configuration.MaxConcurrentConnections)
                         {
-                            _logger.LogWarning("最大同時接続数({MaxConnections})に達しています。新しい接続を待機します", 
+                            _logger.LogWarning("最大同時接続数({MaxConnections})に達しています。古い接続を削除します", 
                                 _configuration.MaxConcurrentConnections);
+                            
+                            // 古いタスクから順に削除
+                            while (_clientTasks.Count >= _configuration.MaxConcurrentConnections && _clientTasks.Count > 0)
+                            {
+                                var oldestTask = _clientTasks[0];
+                                _clientTasks.RemoveAt(0);
+                                
+                                // タスクが完了していない場合は待機
+                                if (!oldestTask.IsCompleted)
+                                {
+                                    try
+                                    {
+                                        oldestTask.Wait(1000);
+                                    }
+                                    catch { }
+                                }
+                            }
                         }
                         
                         _clientTasks.Add(clientTask);
@@ -222,12 +271,21 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
     {
         var pipeSecurity = CreatePipeSecurity();
         
+        var isFirstInstance = Interlocked.Increment(ref _serverInstanceCount) == 1;
+        var pipeOptions = PipeOptions.Asynchronous;
+        
+        // 最初のインスタンスの場合はFirstPipeInstanceフラグを追加
+        if (isFirstInstance)
+        {
+            pipeOptions |= PipeOptions.FirstPipeInstance;
+        }
+        
         return NamedPipeServerStreamAcl.Create(
             _configuration.PipeName,
             PipeDirection.InOut,
-            NamedPipeServerStream.MaxAllowedServerInstances, // -1 = 無制限
+            _configuration.MaxConcurrentConnections, // 設定値に基づいた最大接続数
             PipeTransmissionMode.Message,
-            PipeOptions.Asynchronous,
+            pipeOptions,
             _configuration.BufferSize,
             _configuration.BufferSize,
             pipeSecurity);
@@ -440,6 +498,7 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
         }
 
         _cancellationTokenSource.Dispose();
+        _serverInstanceCount = 0;
         _logger.LogInformation("WindowsNamedPipeServerが解放されました");
     }
 }
