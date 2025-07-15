@@ -173,7 +173,7 @@ public class WindowsNamedPipeServer : INamedPipeServer, IDisposable
                         pipeServer?.Dispose();
                         throw;
                     }
-                    catch (Exception ex)
+                    catch (Exception)
                     {
                         pipeServer?.Dispose();
                         // インスタンスカウントをデクリメント
