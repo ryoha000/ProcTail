@@ -499,75 +499,6 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         }
     }
 
-    /// <summary>
-    /// TraceEventSessionを作成
-    /// </summary>
-    private TraceEventSession? CreateTraceSession(string providerName)
-    {
-        var sessionName = $"PT_{providerName.Split('-').Last()}_{Environment.ProcessId}";
-        
-        try
-        {
-            _logger.LogTrace("ETWセッションを作成中: {SessionName} (Provider: {Provider})", sessionName, providerName);
-            var session = new TraceEventSession(sessionName);
-            
-            // プロバイダー固有の設定
-            switch (providerName)
-            {
-                case "Microsoft-Windows-Kernel-FileIO":
-                    // FileIOInitだけでなく、実際のFileIO操作イベントも有効にする
-                    _logger.LogTrace("FileIOキーワードを有効化中...");
-                    session.EnableKernelProvider(
-                        KernelTraceEventParser.Keywords.FileIOInit | 
-                        KernelTraceEventParser.Keywords.FileIO);
-                    _logger.LogInformation("FileIOプロバイダーを有効にしました (Keywords: FileIOInit | FileIO)");
-                    break;
-                    
-                case "Microsoft-Windows-Kernel-Process":
-                    session.EnableKernelProvider(KernelTraceEventParser.Keywords.Process);
-                    break;
-                    
-                default:
-                    // カスタムプロバイダーの場合
-                    if (Guid.TryParse(providerName, out var providerGuid))
-                    {
-                        session.EnableProvider(providerGuid);
-                    }
-                    else
-                    {
-                        session.EnableProvider(providerName);
-                    }
-                    break;
-            }
-
-            // イベントハンドラーを設定
-            SetupEventHandlers(session, providerName);
-            
-            // 各セッションを別スレッドで処理開始
-            var sessionTask = Task.Run(() =>
-            {
-                try
-                {
-                    _logger.LogInformation("ETWセッション処理を開始します: {ProviderName}", providerName);
-                    session.Source.Process(); // ブロッキング呼び出し
-                    _logger.LogInformation("ETWセッション処理が終了しました: {ProviderName}", providerName);
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "ETWセッション処理でエラーが発生しました: {ProviderName}", providerName);
-                }
-            }, _cancellationTokenSource.Token);
-            
-            _sessionTasks.Add(sessionTask);
-            
-            return session;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "TraceEventSession作成に失敗しました: {ProviderName}", providerName);
-            return null;
-        }
-    }
 
     /// <summary>
     /// 統合カーネルイベントハンドラーを設定
@@ -594,34 +525,6 @@ public class WindowsEtwEventProvider : IEtwEventProvider, IDisposable
         _logger.LogDebug("未処理イベントハンドラーを設定しました");
     }
 
-    /// <summary>
-    /// イベントハンドラーを設定
-    /// </summary>
-    private void SetupEventHandlers(TraceEventSession session, string providerName)
-    {
-        // ファイルI/Oイベント
-        if (providerName == "Microsoft-Windows-Kernel-FileIO")
-        {
-            session.Source.Kernel.FileIOCreate += OnFileIOEvent;
-            session.Source.Kernel.FileIOWrite += OnFileIOEvent;
-            session.Source.Kernel.FileIORead += OnFileIOEvent;
-            session.Source.Kernel.FileIODelete += OnFileIOEvent;
-            session.Source.Kernel.FileIORename += OnFileIOEvent;
-            session.Source.Kernel.FileIOSetInfo += OnFileIOEvent;
-            session.Source.Kernel.FileIOClose += OnFileIOEvent;
-            _logger.LogDebug("FileIOイベントハンドラーを設定しました (Create, Write, Read, Delete, Rename, SetInfo, Close)");
-        }
-        
-        // プロセスイベント
-        if (providerName == "Microsoft-Windows-Kernel-Process")
-        {
-            session.Source.Kernel.ProcessStart += OnProcessEvent;
-            session.Source.Kernel.ProcessStop += OnProcessEvent;
-        }
-        
-        // 汎用イベントハンドラー
-        session.Source.UnhandledEvents += OnUnhandledEvent;
-    }
 
     /// <summary>
     /// ファイルI/Oイベントハンドラー
