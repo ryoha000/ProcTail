@@ -78,8 +78,7 @@ jobs:
           --runtime win-x64 `
           --self-contained true `
           --output ./publish/host-win-x64 `
-          -p:PublishSingleFile=true `
-          -p:IncludeNativeLibrariesForSelfExtract=true `
+          -p:PublishSingleFile=false `
           -p:PublishTrimmed=false `
           -p:Version=${{ steps.get-version.outputs.version }} `
           -p:FileVersion=${{ steps.get-version.outputs.version }} `
@@ -92,8 +91,7 @@ jobs:
           --runtime win-x64 `
           --self-contained true `
           --output ./publish/cli-win-x64 `
-          -p:PublishSingleFile=true `
-          -p:IncludeNativeLibrariesForSelfExtract=true `
+          -p:PublishSingleFile=false `
           -p:PublishTrimmed=false `
           -p:Version=${{ steps.get-version.outputs.version }} `
           -p:FileVersion=${{ steps.get-version.outputs.version }} `
